@@ -1,14 +1,16 @@
 # Evil Tuner XXL
 
-**Internet radio, your phone and AirPlay, played straight into an Akai Force / MPC track, and bent out of shape on the way.**
+**Internet radio, shortwave, your phone and AirPlay, played straight into an Akai Force / MPC track, and bent out of shape on the way.**
 
 Evil Tuner XXL is a native MPC OS VST2 instrument for the Akai Force and the standalone MPCs (Gen1, MPC OS 3.x). It
-brings three sources into an MPC track:
+brings four sources into an MPC track:
 
 - **RADIO**: 30,000+ internet stations from [Radio Browser](https://www.radio-browser.info), browsed by genre, country,
   popularity and bitrate, or searched by name;
 - **PHONE**: any sound from an Android phone, sent over Wi-Fi with Roc (the open-source Roc Droid app);
-- **AIRPLAY**: any sound from an iPhone, iPad or Mac, sent with AirPlay (nothing to install).
+- **AIRPLAY**: any sound from an iPhone, iPad or Mac, sent with AirPlay (nothing to install);
+- **KIWISDR**: live shortwave, 10 kHz to 30 MHz, from public [KiwiSDR](http://kiwisdr.com) receivers around the world:
+  broadcasters, hams, time signals, weather fax, beacons, tuned from the MPC.
 
 Then it runs that sound through a granular voice, a filter, eleven character stages, a saturator, an Erica Synths-style
 delay, plate / reverse / room reverb with shimmer, a 16-step trance gate, a stutter, a MIDI duck, a tempo-synced looper
@@ -28,6 +30,8 @@ hardware, only the idea of it.
 | ![GATE](docs/img/GATE.png) | ![TAPE](docs/img/TAPE.png) |
 | **MOD** | **RADIO: search keyboard / PHONE** |
 | ![MOD](docs/img/MOD.png) | ![keyboard](docs/img/RADIO_keys.png) ![phone](docs/img/RADIO_phone.png) |
+| **RADIO: KIWISDR** | |
+| ![KIWISDR](docs/img/RADIO_kiwi.png) | |
 
 *The pages as the generator draws them (sample values). RADIO is the classic tuner: walnut, aluminium knobs, the amber
 window and push buttons. The effect pages are the modern modules.*
@@ -42,20 +46,21 @@ window and push buttons. The effect pages are the modern modules.*
 4. [RADIO: playing stations](#radio-playing-stations)
 5. [PHONE: Android with Roc](#phone-android-with-roc)
 6. [AIRPLAY: iPhone, iPad, Mac](#airplay-iphone-ipad-mac)
-7. [On the road: a phone hotspot](#on-the-road-a-phone-hotspot)
-8. [PET: the grains](#pet-the-grains)
-9. [FX: character, saturator, limiter](#fx-character-saturator-limiter)
-10. [SPACE: Erica delay and reverb](#space-erica-delay-and-reverb)
-11. [GATE: trance gate, stutter, duck](#gate-trance-gate-stutter-duck)
-12. [TAPE: the rolling tape and the looper](#tape-the-rolling-tape-and-the-looper)
-13. [MOD: LFOs, follower, envelope](#mod-lfos-follower-envelope)
-14. [Pads and MIDI](#pads-and-midi)
-15. [Recording into the MPC](#recording-into-the-mpc)
-16. [Patch ideas](#patch-ideas)
-17. [Privacy and network](#privacy-and-network)
-18. [Troubleshooting](#troubleshooting)
-19. [Building from source](#building-from-source)
-20. [Credits and licences](#credits-and-licences)
+7. [KIWISDR: shortwave from public receivers](#kiwisdr-shortwave-from-public-receivers)
+8. [On the road: a phone hotspot](#on-the-road-a-phone-hotspot)
+9. [PET: the grains](#pet-the-grains)
+10. [FX: character, saturator, limiter](#fx-character-saturator-limiter)
+11. [SPACE: Erica delay and reverb](#space-erica-delay-and-reverb)
+12. [GATE: trance gate, stutter, duck](#gate-trance-gate-stutter-duck)
+13. [TAPE: the rolling tape and the looper](#tape-the-rolling-tape-and-the-looper)
+14. [MOD: LFOs, follower, envelope](#mod-lfos-follower-envelope)
+15. [Pads and MIDI](#pads-and-midi)
+16. [Recording into the MPC](#recording-into-the-mpc)
+17. [Patch ideas](#patch-ideas)
+18. [Privacy and network](#privacy-and-network)
+19. [Troubleshooting](#troubleshooting)
+20. [Building from source](#building-from-source)
+21. [Credits and licences](#credits-and-licences)
 
 ---
 
@@ -117,7 +122,7 @@ presets. A station is never played on its own when a project loads: press **PLAY
 country, bitrate, codec, the seconds of audio buffered and the state (CONNECTING, BUFFERING, PLAYING, WAITING FOR PLAY,
 STOPPED, ERROR).
 
-**Sources** (top right): **RADIO**, **PHONE**, **AIRPLAY**. One at a time.
+**Sources** (top right): **RADIO**, **PHONE**, **AIRPLAY**, **KIWISDR**. One at a time.
 
 **The list**: eight stations per page, with their bitrate. Tap one to play it; the one on air is lit, with a lamp.
 **< PAGE** and **PAGE >** move through the list. Paging past what is loaded fetches the next 64 stations. The line above
@@ -199,12 +204,50 @@ This is classic AirPlay (AirPlay 1) audio, the same thing that works with older 
 audio can use it. The iPhone's volume slider is ignored on purpose: **INPUT LEVEL** sets the level. AirPlay adds a short
 delay (Apple's own buffer, about two seconds), so it's for playing material in, not for live playing on the phone.
 
+## KIWISDR: shortwave from public receivers
+
+![KIWISDR](docs/img/RADIO_kiwi.png)
+
+A [KiwiSDR](http://kiwisdr.com) is a shortwave receiver (10 kHz to 30 MHz) that its owner shares on the internet, usually
+four or eight listeners at a time. Hundreds are public. KIWISDR plays one of them into the track: you pick the receiver
+and the frequency, the receiver demodulates and sends the audio (about 12 kHz wide, mono on both channels).
+
+1. Press **KIWISDR** (top right). The list shows receivers, eight per page: the name, the country and, once asked, how
+   many listen (**2/8**), **FULL** or **OFFLINE**. **< PAGE** / **PAGE >** go through the list.
+2. Tap a receiver: it connects and plays. **PREV** / **NEXT** go to the receiver before / after; **STOP** ends the session.
+3. Tune with the knobs (they take the RADIO page's genre and country places; Q-Link page **RADIO 2** has them too):
+
+| Knob | |
+|---|---|
+| **BAND** | a jump: LF, LW, MW, the broadcast bands **120M** to **11M**, the ham bands **160M** to **10M**, **CB**, **NDB** beacons, and three lists: **TIME SIGNALS**, **VOLMET** (aviation weather), **WEATHER FAX**. A band sets its usual mode, a busy frequency and its step. |
+| **TUNE** | an endless knob over the whole 0 .. 30 MHz: one STEP per detent, either way, as far as you like (bands are only starting points); a fast spin or a drag moves several steps. In a list band it goes from entry to entry. |
+| **STEP** | how far a TUNE detent goes: 10 Hz, 100 Hz, 500 Hz, 1, 5, 9, 10, 100 kHz, 1 MHz (10 or 100 Hz for SSB voices that sound like ducks) |
+| **FILTER** | the bandwidth, within the mode's range (AM 3..12 kHz, SSB 1.5..3.6 kHz, CW 100..1000 Hz, NFM 6..12 kHz) |
+
+**ENTER kHz** (between the page keys) opens the keyboard for a frequency: type it in kHz (`4625`; SPACE is the decimal
+point: `6075 2` = 6075.2) and press **GO**.
+
+The mode keys (in the second row in KIWISDR): **AM**, **USB**, **LSB**, **CW**, **NFM**. The window shows the frequency and
+mode, the receiver, the S-meter and dBm, the bandwidth and the buffer. Tuning goes to the receiver at once; you hear it
+about half a second later (the buffer that keeps the internet's hiccups out).
+
+**Your own receivers**: `kiwisdr.txt` in the plugin's `user_data/` folder (made on first use, with examples) lists yours
+first: one per line, the address as the browser shows it and a name (`http://my-kiwi.example.org:8073 MY RECEIVER`).
+Plain http only. Find receivers at [kiwisdr.com/public](http://kiwisdr.com/public/) or
+[receiverbook.de](https://www.receiverbook.de). Reopen the plugin after editing.
+
+**Manners**: a receiver's slots are shared by everyone. The session ends with STOP, another source or another receiver,
+and it is never reopened by itself after the receiver ended it (receivers have time and inactivity limits; when it says
+THE RECEIVER ENDED THE SESSION, pick another or press PLAY later). Only a dropped network is retried, three times. The
+list asks only the receivers on screen for their status, at most every five minutes each. On a phone's mobile data a
+session uses about 22 MB an hour.
+
 ## On the road: a phone hotspot
 
 A phone's hotspot **is** a Wi-Fi network, with the phone as its router: join the MPC to it (MPC Preferences → Wi-Fi) and
 everything works as at home.
 
-- **RADIO** uses the phone's mobile data. Use **MAX KBPS** to stay on light streams.
+- **RADIO** uses the phone's mobile data. Use **MAX KBPS** to stay on light streams. **KIWISDR** uses about 22 MB an hour.
 - **PHONE (Roc)**: the hotspot phone sends to the MPC's address on the hotspot network (the page shows it). Works.
 - **AIRPLAY from the iPhone that is also the hotspot**: whether iOS lists AirPlay receivers on its own hotspot hasn't been
   confirmed on a device yet. If Evil Tuner XXL doesn't appear, use another device's hotspot, or a Wi-Fi network.
@@ -353,7 +396,7 @@ The plugin's track takes MIDI from the pads, a keyboard or a sequence.
 Set the pads to play notes 36–43 (the usual first eight pads of bank A).
 
 Notes on **DUCK MIDI CH** (with DUCK ON) only trigger the duck. A program change or CC does nothing; everything else is on
-the Q-Links (each page has its own: RADIO, PET 1–2, FX, SPACE, GATE, TAPE, MOD 1–3).
+the Q-Links (each page has its own: RADIO 1–2, PET 1–2, FX, SPACE, GATE, TAPE, MOD 1–3).
 
 ## Recording into the MPC
 
@@ -404,6 +447,10 @@ Start from the defaults (a new instance), then:
 - **PHONE** and **AIRPLAY** only **listen** on the local network (Roc: UDP 10001–10003; AirPlay: TCP 5000, UDP 6001 and up,
   mDNS 5353 to appear in the AirPlay list). Nothing is sent anywhere. Roc Droid is open source with no tracking code; the
   MPC's address never leaves the local network.
+- **KIWISDR** talks to the receiver you pick (its WebSocket on the receiver's own port, usually 8073: the commands for
+  frequency and mode, a keepalive once a second; it shows "EvilTunerXXL" as the listener's name in the receiver's user
+  list), and to the receivers on screen for their `/status` page. The receiver sees the MPC's internet address, as it
+  does any listener's. Nothing else.
 - The receivers stop when you switch source or close the plugin, and they are tied to the plugin: if MPC quits, they quit.
 
 ## Troubleshooting
@@ -416,21 +463,28 @@ Start from the defaults (a new instance), then:
 | PHONE: nothing arrives | Same network? The address in Roc Droid exactly as the page shows it? Some public / hotel Wi-Fi blocks devices from talking to each other: use a phone hotspot. |
 | PHONE RECEIVER STOPPED (PORT IN USE?) | Another plugin instance has PHONE on: one PHONE receiver per MPC. |
 | AIRPLAY: the MPC isn't in the list | Same network? Wait ten seconds after pressing AIRPLAY. Some routers block AirPlay discovery between devices. |
+| KIWISDR: RECEIVER FULL | All its listener slots are taken: pick another (the list shows FULL once it has asked). |
+| KIWISDR: THE RECEIVER ENDED THE SESSION | Its time or inactivity limit: pick another receiver, or press PLAY again later. |
+| KIWISDR: ONE CONNECTION PER ADDRESS | The receiver allows one listener per internet address and someone on your network (a browser tab?) uses it. |
+| KIWISDR: a receiver OFFLINE, or CAN'T FIND / DOESN'T ANSWER | Owners move or retire receivers: pick another, or add your own in `kiwisdr.txt`. |
 | No sound with GRAIN MIX up | FREEZE on an empty buffer: turn FREEZE off for a few seconds. |
 | The sound is too loud / clipping | The LIMITER is on by default; lower VOLUME or INPUT LEVEL. |
 
 Logs on the device (for a bug report): `/tmp/eviltuner.log`, and `/tmp/eviltuner-ffmpeg.log`, `-roc.log`, `-airplay.log`.
-Favourites and settings: `user_data/` inside the plugin's folder (the installer keeps it on upgrades).
+Favourites, your KiwiSDR list and settings: `user_data/` inside the plugin's folder (the installer keeps it on upgrades).
 
 ## Building from source
 
-Needs Linux, python3 (Pillow, numpy, scipy), gcc, and Zig (`pip install ziglang`); for the helpers also git, make,
-autotools, cmake, scons, ragel, pkg-config and llvm (`llvm-strip`, `llvm-objcopy`).
+Needs Linux, python3 (Pillow, numpy, scipy), gcc, and Zig (`pip install ziglang`), or instead of Zig an
+arm-linux-gnueabihf GCC with a glibc 2.31 sysroot (`ARM_GCC=<path>/<triple>- ./build.sh`, e.g.
+[tttapa/docker-arm-cross-toolchain](https://github.com/tttapa/docker-arm-cross-toolchain)'s `armv6-rpi-linux-gnueabihf`);
+for the helpers also git, make, autotools, cmake, scons, ragel, pkg-config and llvm (`llvm-strip`, `llvm-objcopy`).
 
 ```sh
 helpers/build_helpers.sh   # once: ffmpeg, et_roc, shairport-sync (static, armv7), from fixed tags on GitHub
 ./build.sh                 # the plugin (armv7, glibc 2.31) and its skin -> build/package/
-test/run_tests.sh          # offline tests on x86 under ASan / UBSan (a local stream through the real radio path)
+test/run_tests.sh          # offline tests on x86 under ASan / UBSan (a local stream through the real radio path,
+                           # a stand-in KiwiSDR receiver through the real KIWISDR path)
 python3 tools/preview.py out/   # the pages as pictures
 ```
 
@@ -441,6 +495,12 @@ drawn over it.
 Status of 0.1.0: tested offline (the engine and wrapper on x86 under ASan / UBSan; the ARM build loaded and run under QEMU;
 the radio path end to end with a local stream; the ARM Roc receiver with a Roc sender; MP3, AAC and Ogg through the ARM
 decoder; the ARM AirPlay receiver starting). **Not yet tested on a device.**
+
+Status of 0.2.0 (KIWISDR): the protocol checked against a live receiver from a browser (the commands, the MSG and SND
+messages, the ADPCM decoder's state carried over, matching the uncompressed stream's level); the engine on x86 against a
+stand-in receiver (pitch follows the tuning through ADPCM and plain blocks, a full receiver, a session the receiver
+ends, a stalled network); the ARM build checked for its target (armv7, VFPv3-D16, no NEON, glibc 2.29 at most). **Not yet
+tested on a device.**
 
 ## Credits and licences
 
@@ -456,6 +516,8 @@ decoder; the ARM AirPlay receiver starting). **Not yet tested on a device.**
   with libuv MIT and OpenFEC CeCILL-C), **shairport-sync** 4.3.7 (MIT, with mbedTLS Apache-2.0, libconfig LGPL-2.1,
   popt MIT). Their sources: the tags in `helpers/build_helpers.sh`.
 - Stations: **Radio Browser** (radio-browser.info), a community directory. Each station's stream belongs to its owner.
+- **KiwiSDR** (John Seamons, jks-prv, kiwisdr.com): the receivers and their open protocol, as its open-source client
+  **kiwiclient** speaks it; no code taken. Each receiver belongs to its owner, who shares it.
 - Fonts: Michroma and Titillium Web (SIL OFL 1.1).
 
 Evil Tuner XXL is free software under the **GNU GPL v3.0 or later** (see `LICENSE`).

@@ -2,7 +2,9 @@
 # Evil Tuner XXL -- offline tests on this computer (x86, ASan + UBSan):
 #   1. the framework's host test (tools/host_test.c) on the wrapper + engine: names, values, options, Q-Link steps,
 #      MPC's parameter-0 toggle, chunk save/restore, two instances, threads;
-#   2. the engine with the radio path for real: a local HTTP stream -> libcurl -> ffmpeg -> ring, then every module.
+#   2. the engine with the radio path for real: a local HTTP stream -> libcurl -> ffmpeg -> ring, then every module;
+#   3. KIWISDR: unit checks, then the engine against a stand-in receiver (test/fake_kiwi.py): the pitch follows the tuning
+#      (ADPCM and plain blocks), a full receiver, a session the receiver ends (not re-opened), a stalled one (retried).
 # Needs: g++, the system's libcurl and ffmpeg, python3 (http.server, numpy).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -53,6 +55,54 @@ for s in range(1, 26):
     rms = float(np.sqrt((seg ** 2).mean()))
     if not np.isfinite(rms) or rms < 1e-4 or rms > 0.9: ok = False; print("FAIL second %d rms %.4f" % (s, rms))
 print("levels:", "ok" if ok else "FAIL")
+sys.exit(0 if ok else 1)
+PY
+
+echo "== 3. KIWISDR"
+g++ -std=gnu++17 -O1 -g -w $SAN $DEFS $INCS test/kiwi_unit.cc src/kiwi.cc src/source.cc -ldl -lpthread -o build/host/kiwi_unit
+build/host/kiwi_unit
+KLOG=$(mktemp -d)
+python3 test/fake_kiwi.py 18773 "$KLOG/a.log" & K1=$!
+python3 test/fake_kiwi.py 18774 "$KLOG/b.log" --busy & K2=$!
+python3 test/fake_kiwi.py 18775 "$KLOG/c.log" --close-after 2 & K3=$!
+python3 test/fake_kiwi.py 18776 "$KLOG/d.log" --stall-after 1 & K4=$!
+trap 'kill $SPID $K1 $K2 $K3 $K4 2>/dev/null; rm -rf "$SRV" "$KLOG"' EXIT
+sleep 1
+# TUNE is endless: STEP 5 kHz (49M's), one Q-Link event up (from the middle, where the knob rests) = 6075 kHz; then
+# 100 Hz steps: two events up = 6075.2 kHz; ENTER kHz types 4625 (and back: 6075.2 typed, SPACE as the point)
+build/host/host build/host/plugin /tmp/et_kiwi.wav 15 press:src_kiwi kiwi:127.0.0.1:18773 at:6 kiwi_tune=0.5078 \
+  show:kiwi_tune at:9 press:km_usb kiwi_step=1 kiwi_tune=0.5078 kiwi_tune=0.5078 show:st_name \
+  at:12 press:kiwi_enter press:kb_4 press:kb_6 press:kb_2 press:kb_5 show:view show:query press:kb_go show:st_name \
+  at:12.5 press:kiwi_enter press:kb_6 press:kb_0 press:kb_7 press:kb_5 press:kb_space press:kb_2 press:kb_go \
+  at:14.5 show:st_name show:st_info show:kiwi_tune | head -8
+build/host/host build/host/plugin /tmp/et_kiwi_busy.wav 2 kiwi:127.0.0.1:18774 at:1.8 show:st_title | head -1 | tee "$KLOG/busy.txt"
+build/host/host build/host/plugin /tmp/et_kiwi_closed.wav 5 kiwi:127.0.0.1:18775 at:4.8 show:st_title | head -1 | tee "$KLOG/closed.txt"
+build/host/host build/host/plugin /tmp/et_kiwi_stall.wav 19 kiwi:127.0.0.1:18776 at:18.8 show:st_info | head -1 | tee "$KLOG/stall.txt"
+KLOG="$KLOG" python3 - <<'PY'
+import os, wave, numpy as np, sys
+K = os.environ["KLOG"]
+w = wave.open('/tmp/et_kiwi.wav'); d = np.frombuffer(w.readframes(w.getnframes()), np.int16).reshape(-1, 2)[:, 0] / 32768
+ok = True
+def peak(a, b):
+    seg = d[int(a * 44100):int(b * 44100)]
+    sp = np.abs(np.fft.rfft(seg * np.hanning(len(seg)))); f = np.fft.rfftfreq(len(seg), 1 / 44100)
+    return f[np.argmax(sp)]
+for (a, b, want) in ((1.0, 5.5, 1000), (7.0, 8.8, 1500), (10.0, 11.8, 1520), (13.5, 14.9, 1520)):   # 6070, 6075, 6075.2, typed 6075.2 kHz
+    p = peak(a, b)
+    if abs(p - want) > 4: ok = False
+    print("  %.1f-%.1f s: %.1f Hz (want %d)" % (a, b, p, want))
+log = open(K + "/a.log").read()
+for need in ("GET /kiwi/", "SET auth t=kiwi", "SET AR OK in=12000 out=44100", "SET mod=am low_cut=-4200 high_cut=4200 freq=6070.000",
+             "SET mod=am low_cut=-4200 high_cut=4200 freq=6075.000", "SET mod=usb low_cut=300 high_cut=3060 freq=6075.200",
+             "freq=4625.000", "SET compression=1", "CLOSE masked=1"):
+    if need not in log: ok = False; print("  missing:", need)
+if "masked=0" in log: ok = False; print("  an unmasked client frame")
+if log.count("SET keepalive") < 9: ok = False; print("  too few keepalives")
+if "RECEIVER FULL" not in open(K + "/busy.txt").read(): ok = False; print("  busy not reported")
+if "ENDED THE SESSION" not in open(K + "/closed.txt").read(): ok = False; print("  closed not reported")
+if open(K + "/c.log").read().count("REQ ") != 1: ok = False; print("  a session the receiver ended was re-opened")
+if open(K + "/d.log").read().count("REQ ") < 2 or "PLAYING" not in open(K + "/stall.txt").read(): ok = False; print("  a stall was not retried")
+print("kiwisdr:", "ok" if ok else "FAIL")
 sys.exit(0 if ok else 1)
 PY
 echo PASSED

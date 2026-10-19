@@ -199,7 +199,20 @@ enum {
     P_ROW7 = 195,
     P_ROW8 = 196,
     P_VIEW = 197,
-    P_COUNT = 198
+    P_KIWI_BAND = 198,
+    P_KIWI_TUNE = 199,
+    P_KIWI_FINE = 200,
+    P_KIWI_BW = 201,
+    P_SRC_KIWI = 202,
+    P_KM_AM = 203,
+    P_KM_USB = 204,
+    P_KM_LSB = 205,
+    P_KM_CW = 206,
+    P_KM_NFM = 207,
+    P_KIWI_TXT = 208,
+    P_KIWI_STEP = 209,
+    P_KIWI_ENTER = 210,
+    P_COUNT = 211
 };
 #define NUM_KNOBS 72
 #define FIRST_KEY 72

@@ -1,6 +1,6 @@
 # The source lists, shared by build.sh and test/run_tests.sh.
 # the plugin (C++17)
-ENGINE_SRCS="src/engine.cc src/source.cc src/net.cc"
+ENGINE_SRCS="src/engine.cc src/source.cc src/net.cc src/kiwi.cc"
 # Dragonfly Reverb's Plate and Room (Michael Willis, GPL-3.0; freeverb3 inside), as RMXXXL builds them (C++11)
 FV=third_party/dragonfly/common/freeverb
 DF_SRCS="src/rv_plate.cc src/rv_room.cc $FV/allpass.cpp $FV/biquad.cpp $FV/comb.cpp $FV/delay.cpp $FV/delayline.cpp \

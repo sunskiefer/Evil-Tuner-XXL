@@ -1,4 +1,4 @@
-// Evil Tuner XXL -- the sources: internet radio, PHONE (Roc) and AIRPLAY.
+// Evil Tuner XXL -- the sources: internet radio, PHONE (Roc) and AIRPLAY (KIWISDR is in kiwi.cc).
 //
 // One worker thread per instance owns whatever is playing. Every source ends up as raw 44.1 kHz stereo s16 on a pipe
 // from a helper process (bin/ in the plugin's folder, all static):
@@ -13,6 +13,7 @@
 #include "curlx.h"
 
 #include <arpa/inet.h>
+#include <math.h>
 #include <condition_variable>
 #include <errno.h>
 #include <fcntl.h>
@@ -52,6 +53,15 @@ static void logf(const char* fmt, ...) {
   va_end(ap);
   fputc('\n', f);
   fclose(f);
+}
+
+void log_line(const char* fmt, ...) {
+  char b[512];
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(b, sizeof b, fmt, ap);
+  va_end(ap);
+  logf("%s", b);
 }
 
 // ------------------------------------------------------------------------------------------------ child processes
@@ -377,6 +387,42 @@ void Sources::play_airplay() {
   gen_++;
   cv_.notify_all();
 }
+void Sources::play_kiwi(const KiwiRx& rx, const KiwiTune& t) {
+  kiwi_tune(t);
+  std::lock_guard<std::mutex> lk(mu_);
+  want_kind_ = SRC_KIWI;
+  want_rx_ = rx;
+  gen_++;
+  cv_.notify_all();
+}
+void Sources::kiwi_tune(const KiwiTune& t) {
+  uint32_t q = tune_seq_.load(std::memory_order_relaxed);
+  tune_seq_.store(q + 1, std::memory_order_release);   // odd: being written
+  std::atomic_thread_fence(std::memory_order_release);
+  tune_hz_.store((int64_t)llround(t.khz * 1000.0), std::memory_order_relaxed);
+  tune_mode_.store(t.mode, std::memory_order_relaxed);
+  tune_lo_.store(t.lo, std::memory_order_relaxed);
+  tune_hi_.store(t.hi, std::memory_order_relaxed);
+  tune_seq_.store(q + 2, std::memory_order_release);
+}
+bool Sources::kiwi_tune_read(KiwiTune& t, uint32_t& rev) {
+  for (int tries = 0; tries < 100; ++tries) {
+    uint32_t a = tune_seq_.load(std::memory_order_acquire);
+    if (a & 1) continue;
+    KiwiTune x;
+    x.khz = tune_hz_.load(std::memory_order_relaxed) / 1000.0;
+    x.mode = tune_mode_.load(std::memory_order_relaxed);
+    x.lo = tune_lo_.load(std::memory_order_relaxed);
+    x.hi = tune_hi_.load(std::memory_order_relaxed);
+    std::atomic_thread_fence(std::memory_order_acquire);
+    if (tune_seq_.load(std::memory_order_relaxed) != a) continue;
+    bool changed = a != rev;
+    rev = a;
+    t = x;
+    return changed;
+  }
+  return false;
+}
 void Sources::stop() {
   std::lock_guard<std::mutex> lk(mu_);
   want_kind_ = SRC_NONE;
@@ -436,18 +482,21 @@ void Sources::worker() {
   for (;;) {
     int kind;
     Station st;
+    KiwiRx rx;
     uint32_t g;
     {
       std::unique_lock<std::mutex> lk(mu_);
       g = gen_.load();
       kind = want_kind_;
       st = want_station_;
+      rx = want_rx_;
     }
     if (quit_.load()) break;
     this->kind = kind;
     ring.clear();
     if (kind == SRC_RADIO) run_radio(st, g);
     else if (kind == SRC_PHONE || kind == SRC_AIRPLAY) run_child(kind, g);
+    else if (kind == SRC_KIWI) run_kiwi(rx, g);
     else { state = 0; }
     // wait for the next request (a source that ended by itself idles here)
     std::unique_lock<std::mutex> lk(mu_);

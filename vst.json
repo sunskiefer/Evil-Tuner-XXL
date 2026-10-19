@@ -2,7 +2,7 @@
  "name": "Evil Tuner XXL",
  "vendor": "L'Cronx",
  "uid": "AnEt",
- "version": 101,
+ "version": 200,
  "so": "evil_tuner_xxl.so",
  "params": "params.json",
  "layout": "layout.conf",

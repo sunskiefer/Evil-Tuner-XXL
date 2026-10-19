@@ -15,7 +15,8 @@ TABS = ["RADIO", "PET", "FX", "SPACE", "GATE", "TAPE", "MOD"]
 STYLE = {0: "classic"}            # every other tab: "modern"
 READOUT = (16, 548, 1248, 66)     # the readout strip of the modern pages
 
-KNOBS = []      # (tab, key, cx, cy, size, look)      look: alu | white | black
+VIEW_COUNT = 5  # the RADIO page's views: LIST, KEYS, PHONE, AIRPLAY, KIWI (the "view" parameter's options)
+KNOBS = []      # (tab, key, cx, cy, size, look[, views])   look: alu | white | black ; views: None or [view options]
 KEYS = []       # (tab, key, cx, cy, w, h, look, label, views)   look: amber | round | kbd ; views: None or [view options]
 TEXTS = []      # (tab, key, x, y, w, h, px, colour, justify, views)
 SECTIONS = []   # (tab, title, x, y, w, h)
@@ -48,15 +49,22 @@ T = 0
 TEXTS += [(T, "st_name", 70, 22, 740, 42, 36, "1c0f02", "left", None),
           (T, "st_title", 70, 64, 740, 30, 24, "1c0f02", "left", None),
           (T, "st_info", 70, 94, 740, 24, 18, "3a2008", "left", None)]
-# sources and the list's modes: amber push buttons (right of the window)
-key_row(T, [("src_radio", "RADIO"), ("src_phone", "PHONE"), ("src_air", "AIRPLAY")], 52, 860, 1236, "amber", 104, 46)
-key_row(T, [("search", "SEARCH"), ("top", "BROWSE"), ("favs", "FAVS"), ("fav", "FAV")], 128, 860, 1236, "amber", 86, 40)
-# the station list (view LIST): the page line, eight rows, the page keys
+# sources and the list's modes: amber push buttons (right of the window); in KIWISDR the second row picks the mode
+RADIO_VIEWS = [0, 1, 2, 3]
+key_row(T, [("src_radio", "RADIO"), ("src_phone", "PHONE"), ("src_air", "AIRPLAY"), ("src_kiwi", "KIWISDR")], 52, 860,
+        1236, "amber", 86, 46)
+key_row(T, [("search", "SEARCH"), ("top", "BROWSE"), ("favs", "FAVS"), ("fav", "FAV")], 128, 860, 1236, "amber", 86, 40,
+        views=RADIO_VIEWS)
+key_row(T, [("km_am", "AM"), ("km_usb", "USB"), ("km_lsb", "LSB"), ("km_cw", "CW"), ("km_nfm", "NFM")], 128, 860, 1236,
+        "amber", 66, 40, views=[4])
+# the station list (view LIST) or the receivers (view KIWI): the page line, eight rows, the page keys
 TEXTS.append((T, "page_txt", 60, 166, 760, 24, 20, AMBER, "left", [0]))
+TEXTS.append((T, "kiwi_txt", 60, 166, 760, 24, 20, AMBER, "left", [4]))
 for i in range(8):
     c, r = i % 2, i // 2
     ROWS.append((T, "row%d" % (i + 1), 56 + c * 388, 196 + r * 58, 380, 50))
-key_row(T, [("pg_prev", "< PAGE"), ("pg_next", "PAGE >")], 448, 56, 824, "amber", 120, 36, views=[0])
+key_row(T, [("pg_prev", "< PAGE"), ("pg_next", "PAGE >")], 448, 56, 824, "amber", 120, 36, views=[0, 4])
+KEYS.append((T, "kiwi_enter", 440, 448, 140, 36, "amber", "ENTER kHz", [4]))   # type a frequency (the keyboard)
 # the keyboard (view KEYS) in the list's place
 TEXTS.append((T, "query", 70, 166, 740, 30, 26, AMBER, "left", [1]))
 for r, chars in enumerate(["1234567890", "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"]):
@@ -81,9 +89,13 @@ STATIC += [(T, "ANDROID: OPEN ROC DROID, CHOOSE SENDER,", 440, 300, 14, "c9b59a"
 key_row(T, [("prev", "PREV"), ("play", "PLAY"), ("stop", "STOP"), ("next", "NEXT"), ("sync", "SYNC")], 552, 56, 824,
         "amber", 120, 54)
 # the tuner's knobs (aluminium): genre and country large, sort and bitrate, input level
-KNOBS += [(T, "genre", 952, 286, 120, "alu"), (T, "country", 1144, 286, 120, "alu"),
-          (T, "sort", 922, 500, 80, "alu"), (T, "kbps", 1043, 500, 80, "alu"), (T, "in_lvl", 1164, 500, 80, "alu")]
-QLINKS[T] = [["genre", "country", "sort", "kbps", "in_lvl"]]
+KNOBS += [(T, "genre", 952, 286, 120, "alu", RADIO_VIEWS), (T, "country", 1144, 286, 120, "alu", RADIO_VIEWS),
+          (T, "sort", 922, 500, 80, "alu", RADIO_VIEWS), (T, "kbps", 1043, 500, 80, "alu", RADIO_VIEWS),
+          (T, "in_lvl", 1164, 500, 80, "alu")]
+# KIWISDR's tuning in the same places: BAND and TUNE large, FINE and FILTER
+KNOBS += [(T, "kiwi_band", 952, 286, 120, "alu", [4]), (T, "kiwi_tune", 1144, 286, 120, "alu", [4]),
+          (T, "kiwi_step", 922, 500, 80, "alu", [4]), (T, "kiwi_bw", 1043, 500, 80, "alu", [4])]
+QLINKS[T] = [["genre", "country", "sort", "kbps", "in_lvl"], ["kiwi_band", "kiwi_tune", "kiwi_step", "kiwi_bw", "in_lvl"]]
 
 # ------------------------------------------------------------------------------------------------ PET (modern)
 T = 1

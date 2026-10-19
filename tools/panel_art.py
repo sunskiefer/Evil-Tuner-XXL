@@ -32,7 +32,7 @@ INK = (226, 226, 222)
 SS = 3
 KNOB_FRAMES = 128
 KNOB_SPAN = 150
-VIEW_COUNT = 4
+VIEW_COUNT = P.VIEW_COUNT
 
 
 def font(px):
@@ -378,17 +378,30 @@ def page_bg(tab):
     return classic_bg() if P.STYLE.get(tab) == "classic" else modern_bg(tab)
 
 
+def knob_label_at(tab, key, cx, cy, s, classic):
+    return (cx, cy - s * 0.5 - 20 if classic else cy + s * 0.5 + 16)
+
+
+def knob_label_font(tab, key, cx, cy, s, name):
+    gap = min([abs(cx - c2) for t2, k2, c2, y2, *_ in P.KNOBS if t2 == tab and k2 != key and abs(y2 - cy) < 20 and c2 != cx] + [170])
+    return fit_font(name, gap - 12, 13 if s > 80 else 11)
+
+
 def print_labels(page, tab, params):
     """the printed parts over the background: knob names, ticks, key names"""
     d = ImageDraw.Draw(page)
     classic = P.STYLE.get(tab) == "classic"
     names = {p["key"]: p["name"] for p in params}
-    for t, key, cx, cy, s, look in P.KNOBS:
+    drawn = set()
+    for t, key, cx, cy, s, look, *views in P.KNOBS:
         if t != tab:
             continue
-        knob_ticks(page, cx, cy, s, (210, 210, 205) if classic else (120, 120, 116))
-        gap = min([abs(cx - c2) for t2, k2, c2, y2, *_ in P.KNOBS if t2 == tab and k2 != key and abs(y2 - cy) < 20] + [170])
-        d.text((cx, cy - s * 0.5 - 20 if classic else cy + s * 0.5 + 16), names[key], font=fit_font(names[key], gap - 12, 13 if s > 80 else 11),
+        if (cx, cy, s) not in drawn:   # knobs of different views can share a place (and its ticks)
+            knob_ticks(page, cx, cy, s, (210, 210, 205) if classic else (120, 120, 116))
+            drawn.add((cx, cy, s))
+        if views and views[0]:   # a knob of some views only: its name is a picture of those views (build_page)
+            continue
+        d.text(knob_label_at(tab, key, cx, cy, s, classic), names[key], font=knob_label_font(tab, key, cx, cy, s, names[key]),
                fill=(222, 214, 200, 255) if classic else (190, 190, 186, 255), anchor="mm")
     for t, key, cx, cy, w, h, look, label, views in P.KEYS:
         if t == tab and look == "round":
@@ -459,9 +472,9 @@ def placed(dkey, name, index, rect, focus_on=True, views=None, view_index=None):
          "bounds": {"version": 2, "acceptsHWFocus": "Yes" if focus_on else "No", "showWhenDataModelInvalid": "Hide",
                     "whenVisible": "Always", "boundsType": "Absolute", "bounds": bounds_s(x, y, w, h),
                     "additionalInvalidatingHandles": []}}
-    if views:   # shown only while the view is one of these (MPC's IndexedEnabling)
-        c["bounds"]["additionalInvalidatingHandles"] = ["IndexedEnabling/%d/%d/Parameter %d" % (v, VIEW_COUNT, view_index)
-                                                        for v in views]
+    if views:   # shown only while the view is this one (MPC's IndexedEnabling)
+        assert len(views) == 1, "MPC shows a part only while ALL its IndexedEnabling handles hold: one view per copy"
+        c["bounds"]["additionalInvalidatingHandles"] = ["IndexedEnabling/%d/%d/Parameter %d" % (views[0], VIEW_COUNT, view_index)]
     return c
 
 
@@ -533,15 +546,24 @@ def build_page(sk, tab, preview=None):
     shown = bg.copy() if preview is not None else None
 
     def place(dkey, key, rect, views=None, focus_on=True):
-        kids.append(placed(dkey, key, sk.index[key], rect, focus_on, views, view_i))
+        # a control of several views is one copy per view, each with that view's handle: MPC ANDs a part's handles
+        # (two views on one part would never both hold, and the part would never show; seen on an MPC One, 0.2.0)
+        if views and len(views) > 1:
+            for v in views:
+                kids.append(placed(dkey, key, sk.index[key], rect, focus_on, [v], view_i))
+        else:
+            kids.append(placed(dkey, key, sk.index[key], rect, focus_on, views, view_i))
 
     # ---- knobs: a filmstrip and MPC's value text under it
-    for t, key, cx, cy, s, look in P.KNOBS:
+    names = {p["key"]: p["name"] for p in sk.params}
+    for t, key, cx, cy, s, look, *views in P.KNOBS:
         if t != tab:
             continue
+        views = views[0] if views else None
         name = knob_strip(sk, look, s)
         lab_y = s + 4 if classic else s + 28   # modern: the name is printed between the knob and its value
-        gap = min([abs(cx - c2) for t2, k2, c2, y2, *_ in P.KNOBS if t2 == tab and k2 != key and abs(y2 - cy) < 20] + [200])
+        # the nearest neighbour in the row (a knob of another view in the same place is not a neighbour)
+        gap = min([abs(cx - c2) for t2, k2, c2, y2, *_ in P.KNOBS if t2 == tab and k2 != key and abs(y2 - cy) < 20 and c2 != cx] + [200])
         tw, th = min(max(s + 40, 140), gap - 4), lab_y + 26
         tw -= tw % 2
         dkey = "etKnob_%s_%d_%s" % (look, s, "c" if classic else "m")
@@ -549,8 +571,22 @@ def build_page(sk, tab, preview=None):
                                        value_label(0, lab_y, tw, 26, 20 if s >= 90 else 17, vcol)])
         if classic:   # names above: the value under the knob is where the tuner prints nothing
             pass
-        place(dkey, key, (R(cx - tw / 2), R(cy - s / 2), tw, th))
-        if shown is not None:
+        place(dkey, key, (R(cx - tw / 2), R(cy - s / 2), tw, th), views)
+        if views:   # its name: a picture shown with the knob
+            f = knob_label_font(tab, key, cx, cy, s, names[key])
+            lx, ly = knob_label_at(tab, key, cx, cy, s, classic)
+            lw = int(f.getlength(names[key])) + 10
+            lh = 24
+            rect = (R(lx - lw / 2), R(ly - lh / 2), lw, lh)
+            im = bg.crop((rect[0], rect[1], rect[0] + lw, rect[1] + lh))
+            ImageDraw.Draw(im).text((lw / 2, lh / 2), names[key], font=f,
+                                    fill=(222, 214, 200, 255) if classic else (190, 190, 186, 255), anchor="mm")
+            lname = sk.save(im, "et_%d_name_%s.png" % (tab, key))
+            for v in views:
+                kids.append(picture(lname, rect, view_i, v, VIEW_COUNT))
+            if shown is not None and preview.get("__view", 0) in views:
+                shown.alpha_composite(im, (rect[0], rect[1]))
+        if shown is not None and (views is None or preview.get("__view", 0) in views):
             v, text, _ = preview.get(key, (0.5, "", False))
             ang = -KNOB_SPAN + 2 * KNOB_SPAN * v
             k = knob_frame(look, s, ang)
@@ -610,8 +646,8 @@ def build_page(sk, tab, preview=None):
         dkey = "etRow_%dx%d" % (w, h)
         sk.add_def(dkey, ROW_ACTIONS, [focus(w, h), button(on_n, off_n, w, h),
                                       value_label(14, 0, w - 44, h, 22, "f29a2e", "left verticallyCentred")])
-        place(dkey, key, (x, y, w, h), [0], key == "row1")
-        if shown is not None and preview.get("__view", 0) == 0:
+        place(dkey, key, (x, y, w, h), [0, 4], key == "row1")
+        if shown is not None and preview.get("__view", 0) in (0, 4):
             _, text, lit = preview.get(key, (0, "", False))
             shown.alpha_composite(on if lit else off, (x, y))
             ImageDraw.Draw(shown).text((x + 14, y + h / 2), text, font=ImageFont.truetype(TITILLIUM, 22), fill=AMBER + (255,), anchor="lm")

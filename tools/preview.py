@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Evil Tuner XXL -- the mockup: every page drawn as MPC would show it, with sample values (no device needed).
 
-    python3 tools/preview.py out/        -> out/<TAB>.png for each page, out/RADIO_keys.png, out/RADIO_phone.png,
+    python3 tools/preview.py out/        -> out/<TAB>.png for each page, out/RADIO_keys.png, out/RADIO_phone.png, out/RADIO_kiwi.png,
                                             and out/all_pages.png (all of them stacked)"""
 import json
 import os
@@ -46,6 +46,16 @@ SAMPLE = {
     "fol_amt": (0.3, "30%", 0), "fol_spd": (0.4, "40%", 0), "fol_dest": (0.45, "CUTOFF", 0),
     "atk": (0.05, "2 ms", 0), "dec": (0.4, "150 ms", 0), "sus": (0.8, "80%", 0), "rel": (0.35, "116 ms", 0), "l2_sync": (0, "", 1),
 }
+KIWI_SAMPLE = {
+    "st_name": (0, "4625.00 kHz  AM", 0), "st_title": (0, "PALLAS, LAPLAND", 0),
+    "st_info": (0, "S9+12 -61 dBm  BW 8.4k  BUF 0.6s  PLAYING", 0),
+    "kiwi_txt": (0, "KIWISDR RECEIVERS   PAGE 1/5   TAP ONE TO LISTEN", 0),
+    "row1": (0, "PALLAS, LAPLAND  FI  2/8", 1), "row2": (0, "PARAINEN  FI  1/4", 0), "row3": (0, "LOPPI (OH1CT)  FI  FULL", 0),
+    "row4": (0, "ASIKKALA  FI  0/4", 0), "row5": (0, "KUOPIO  FI  3/8", 0), "row6": (0, "SM2BYC  SE  1/4", 0),
+    "row7": (0, "LA2G  NO  OFFLINE", 0), "row8": (0, "SOENDERBORG  DK  2/4", 0),
+    "kiwi_band": (8 / 30, "49M", 0), "kiwi_tune": (0.5, "4625.00 kHz", 0), "kiwi_step": (4 / 8, "5 kHz", 0),
+    "kiwi_bw": (0.6, "8.4 kHz", 0), "src_radio": (0, "", 0), "src_kiwi": (0, "", 1), "km_am": (0, "", 1), "top": (0, "", 0),
+}
 for i in (1, 3, 4, 6, 8, 9, 11, 12, 14, 16):
     SAMPLE["gs%d" % i] = (0, "", 1)
 
@@ -59,11 +69,13 @@ def main(out):
         _, _, shown = A.build_page(sk, tab, dict(SAMPLE, __view=0))
         shown.convert("RGB").save(os.path.join(out, "%s.png" % name))
         shots.append(shown)
-    for view, label in ((1, "keys"), (2, "phone")):
+    for view, label in ((1, "keys"), (2, "phone"), (4, "kiwi")):
         s = dict(SAMPLE, __view=view)
         if view == 2:
             s.update({"st_name": (0, "PHONE  (ROC)", 0), "st_title": (0, "PHONE CONNECTED", 0), "st_info": (0, "BUF 0.3s  PLAYING", 0),
                       "src_radio": (0, "", 0), "src_phone": (0, "", 1), "top": (0, "", 0)})
+        if view == 4:
+            s.update(KIWI_SAMPLE)
         _, _, shown = A.build_page(sk, 0, s)
         shown.convert("RGB").save(os.path.join(out, "RADIO_%s.png" % label))
         shots.append(shown)

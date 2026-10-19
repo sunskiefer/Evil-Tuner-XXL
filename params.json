@@ -1894,8 +1894,153 @@
     "LIST",
     "KEYS",
     "PHONE",
-    "AIRPLAY"
+    "AIRPLAY",
+    "KIWI"
    ],
+   "default": 0
+  },
+  {
+   "key": "kiwi_band",
+   "name": "BAND",
+   "default": 8,
+   "options": [
+    "LF 10-150",
+    "LW",
+    "NDB 280-530",
+    "MW",
+    "120M",
+    "90M",
+    "75M",
+    "60M",
+    "49M",
+    "41M",
+    "31M",
+    "25M",
+    "22M",
+    "19M",
+    "16M",
+    "15M",
+    "13M",
+    "11M",
+    "160M HAM",
+    "80M HAM",
+    "40M HAM",
+    "30M HAM",
+    "20M HAM",
+    "17M HAM",
+    "15M HAM",
+    "12M HAM",
+    "10M HAM",
+    "CB 27 MHZ",
+    "TIME SIGNALS",
+    "VOLMET",
+    "WEATHER FAX"
+   ],
+   "qlink_ticks": 2
+  },
+  {
+   "key": "kiwi_tune",
+   "name": "TUNE",
+   "default": 0.5,
+   "min": 0,
+   "max": 1,
+   "dynamic_display": true
+  },
+  {
+   "key": "kiwi_fine",
+   "name": "FINE (OLD)",
+   "default": 50,
+   "min": 0,
+   "max": 100,
+   "display": "int"
+  },
+  {
+   "key": "kiwi_bw",
+   "name": "FILTER",
+   "default": 0.6,
+   "min": 0,
+   "max": 1,
+   "dynamic_display": true
+  },
+  {
+   "key": "src_kiwi",
+   "name": "KIWISDR",
+   "display": "string",
+   "min": 0,
+   "max": 1,
+   "default": 0
+  },
+  {
+   "key": "km_am",
+   "name": "AM",
+   "display": "string",
+   "min": 0,
+   "max": 1,
+   "default": 0
+  },
+  {
+   "key": "km_usb",
+   "name": "USB",
+   "display": "string",
+   "min": 0,
+   "max": 1,
+   "default": 0
+  },
+  {
+   "key": "km_lsb",
+   "name": "LSB",
+   "display": "string",
+   "min": 0,
+   "max": 1,
+   "default": 0
+  },
+  {
+   "key": "km_cw",
+   "name": "CW",
+   "display": "string",
+   "min": 0,
+   "max": 1,
+   "default": 0
+  },
+  {
+   "key": "km_nfm",
+   "name": "NFM",
+   "display": "string",
+   "min": 0,
+   "max": 1,
+   "default": 0
+  },
+  {
+   "key": "kiwi_txt",
+   "name": "RECEIVERS",
+   "display": "string",
+   "min": 0,
+   "max": 1,
+   "default": 0
+  },
+  {
+   "key": "kiwi_step",
+   "name": "STEP",
+   "default": 4,
+   "options": [
+    "10 Hz",
+    "100 Hz",
+    "500 Hz",
+    "1 kHz",
+    "5 kHz",
+    "9 kHz",
+    "10 kHz",
+    "100 kHz",
+    "1 MHz"
+   ],
+   "qlink_ticks": 2
+  },
+  {
+   "key": "kiwi_enter",
+   "name": "ENTER kHz",
+   "display": "string",
+   "min": 0,
+   "max": 1,
    "default": 0
   }
  ]

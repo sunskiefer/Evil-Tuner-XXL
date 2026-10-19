@@ -1,6 +1,7 @@
 // Evil Tuner XXL -- offline test host: drives the engine through mpc_engine() like the wrapper does, renders to a WAV.
 //
-//   host <helper dir> <out.wav> <seconds> [key=value | press:<key> | at:<seconds> | url:<stream url> | note:<n>:<vel>] ...
+//   host <helper dir> <out.wav> <seconds> [key=value | press:<key> | at:<seconds> | url:<stream url> | kiwi:<host>:<port>
+//        | note:<n>:<vel> | show:<key>] ...
 //
 // "url:" plays a stream through the real radio path (curl -> ffmpeg -> ring); the commands after "at:<s>" run at that time.
 #include <math.h>
@@ -29,6 +30,7 @@ static void wav_header(FILE* f, uint32_t frames) {
 }
 
 extern "C" void et_test_set_station(void* inst, const char* url);
+extern "C" void et_test_set_kiwi(void* inst, const char* host, int port);
 
 int main(int argc, char** argv) {
   if (argc < 4) { fprintf(stderr, "usage: host <plugin dir> <out.wav> <seconds> [cmds]\n"); return 2; }
@@ -56,6 +58,11 @@ int main(int argc, char** argv) {
       if (c.block != b) continue;
       if (c.c.compare(0, 6, "press:") == 0) e->set_param(in, c.c.c_str() + 6, "1");
       else if (c.c.compare(0, 4, "url:") == 0) et_test_set_station(in, c.c.c_str() + 4);
+      else if (c.c.compare(0, 5, "kiwi:") == 0) {   // kiwi:<host>:<port>
+        std::string hp = c.c.substr(5);
+        size_t co = hp.rfind(':');
+        et_test_set_kiwi(in, hp.substr(0, co).c_str(), atoi(hp.c_str() + co + 1));
+      }
       else if (c.c.compare(0, 5, "note:") == 0) {
         int nt = 60, vel = 100;
         sscanf(c.c.c_str() + 5, "%d:%d", &nt, &vel);
@@ -79,7 +86,7 @@ int main(int argc, char** argv) {
   }
   fclose(f);
   char t[256];
-  const char* show[] = {"st_name", "st_title", "st_info", "page_txt", "readout", "tape_txt", "row1", "row2"};
+  const char* show[] = {"st_name", "st_title", "st_info", "page_txt", "kiwi_txt", "readout", "tape_txt", "row1", "row2", "view"};
   for (const char* k : show) if (e->get_param(in, k, t, sizeof t) > 0) printf("%-9s %s\n", k, t);
   printf("peak %.3f  rms %.4f\n", peak, sqrt(sum / (n ? n : 1)));
   e->destroy(in);

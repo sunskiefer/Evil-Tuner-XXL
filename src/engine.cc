@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -70,6 +71,18 @@ struct Inst {
   int browse_countdown = 0;           // blocks until a filter change searches
   std::string title, status, ip;
   uint32_t ip_check = 0;
+  // ---- KIWISDR
+  KiwiDir kdir;
+  std::vector<KiwiRx> kiwis;          // the receivers (the user's, then the built-in ones), with their status
+  int kpage = 0;
+  KiwiRx kcur;                        // the receiver picked
+  bool kcur_valid = false;
+  int kmode = KM_AM;
+  double kfreq = 6070.0;              // the frequency (kHz): BAND jumps, TUNE steps, ENTER kHz types it
+  bool kentry = false;                // the keyboard types a frequency (not a station search)
+  std::string kquery;
+  bool kprobe = true;                 // ask the shown receivers for their status
+  std::vector<std::string> changed;   // knobs the engine moved itself (mpc_engine_changed)
   // ---- readout
   int touched = -1;
   uint32_t touched_at = 0;
@@ -119,6 +132,77 @@ inline float E(const Inst* s, int p) { return s->eff[p]; }
 
 void touch(Inst* s, int p) { s->touched = p; s->touched_at = s->clock; s->display_rev++; }
 void flash(Inst* s, const std::string& m) { s->flash = m; s->flash_until = s->clock + 344 * 2; s->display_rev++; }   // ~2 s
+
+// ------------------------------------------------------------------------------------------------ KIWISDR tuning
+const KiwiBand& kband(const Inst* s) { return KIWI_BANDS[std::max(0, std::min(KIWI_NUM_BANDS - 1, opt(s, P_KIWI_BAND)))]; }
+int kband_steps(const KiwiBand& b) { return b.nlist ? b.nlist - 1 : (int)lround((b.hi - b.lo) / b.step); }
+int kband_default(const KiwiBand& b) { return b.nlist ? 0 : (int)lround((b.def - b.lo) / b.step); }
+
+void moved(Inst* s, const char* key);
+void flash(Inst* s, const std::string& m);
+const double kKiwiTop = 30000.0;      // kHz: a KiwiSDR's range (0..30 MHz)
+
+double kiwi_khz(const Inst* s) { return s->kfreq; }
+
+double kiwi_step_khz(const Inst* s) { return KIWI_STEP_KHZ[std::max(0, std::min(KIWI_NUM_STEPS - 1, opt(s, P_KIWI_STEP)))]; }
+
+// the STEP option nearest a band's own step
+int kiwi_step_option(double khz) {
+  int best = 3;
+  for (int i = 0; i < KIWI_NUM_STEPS; ++i)
+    if (fabs(KIWI_STEP_KHZ[i] - khz) < fabs(KIWI_STEP_KHZ[best] - khz)) best = i;
+  return best;
+}
+
+// TUNE is an endless knob: it rests in the middle, each move is read from there (a Q-Link event or a data wheel click is
+// one step whichever way it went; a bigger move, a drag or a fast spin, that many steps), and the knob is put back.
+// A step is STEP on the grid of STEP (5 kHz steps land on ...5 and ...0), over the whole 0..30 MHz; in a list band
+// (TIME SIGNALS ...), while the frequency is one of its entries, the next entry.
+void kiwi_turn(Inst* s, float to) {
+  float d = to - 0.5f;
+  int steps = fabsf(d) < 0.03f ? (d > 0.f ? 1 : (d < 0.f ? -1 : 0)) : (int)lroundf(d * 128.f);
+  steps = std::max(-64, std::min(64, steps));
+  if (steps) {
+    const KiwiBand& b = kband(s);
+    int at = -1;
+    for (int i = 0; i < b.nlist; ++i) if (fabs(b.list[i] - s->kfreq) < 0.001) at = i;
+    if (at >= 0) s->kfreq = b.list[std::max(0, std::min(b.nlist - 1, at + steps))];
+    else {
+      double st = kiwi_step_khz(s), q = s->kfreq / st;
+      double base = steps > 0 ? floor(q + 1e-9) : ceil(q - 1e-9);   // off the grid: the first step lands on it
+      s->kfreq = std::max(0.0, std::min(kKiwiTop, (base + steps) * st));
+      s->kfreq = floor(s->kfreq * 1000.0 + 0.5) / 1000.0;           // whole Hz
+    }
+  }
+  s->v[P_KIWI_TUNE] = 0.5f;
+  moved(s, "kiwi_tune");
+}
+
+// the passband for the mode, FILTER's share of the mode's range (Hz around the carrier)
+KiwiTune kiwi_tune(const Inst* s) {
+  KiwiTune t;
+  t.khz = kiwi_khz(s);
+  t.mode = s->kmode;
+  float x = clampf(s->v[P_KIWI_BW], 0.f, 1.f);
+  int w;
+  switch (s->kmode) {
+    case KM_USB: w = (int)lroundf(1500.f + 2100.f * x); t.lo = 300; t.hi = 300 + w; break;
+    case KM_LSB: w = (int)lroundf(1500.f + 2100.f * x); t.lo = -300 - w; t.hi = -300; break;
+    case KM_CW: w = (int)lroundf(100.f + 900.f * x); t.lo = 500 - w / 2; t.hi = 500 + w / 2; break;
+    case KM_NFM: w = (int)lroundf(6000.f + 6000.f * x); t.lo = -w / 2; t.hi = w / 2; break;
+    default: w = (int)lroundf(3000.f + 9000.f * x); t.lo = -w / 2; t.hi = w / 2; break;
+  }
+  return t;
+}
+
+void kiwi_retune(Inst* s) {
+  if (s->want_src == SRC_KIWI) s->src.kiwi_tune(kiwi_tune(s));
+  s->display_rev++;
+}
+
+void moved(Inst* s, const char* key) {
+  if (std::find(s->changed.begin(), s->changed.end(), key) == s->changed.end()) s->changed.push_back(key);
+}
 
 // ------------------------------------------------------------------------------------------------ value texts
 std::string value_text(const Inst* s, int p) {
@@ -190,6 +274,20 @@ std::string value_text(const Inst* s, int p) {
       int l = p == P_L1_RATE ? 0 : (p == P_L2_RATE ? 1 : 2);
       if (s->lsync[l]) return kSyncRates[(int)lroundf(clampf(v, 0, 1) * 10.f)];
       snprintf(b, sizeof b, "%.2f Hz", expmap(v, 0.02f, 20.f));
+      return b;
+    }
+    case P_KIWI_TUNE: snprintf(b, sizeof b, "%.2f kHz", kiwi_khz(s)); return b;   // the frequency, not the knob
+    case P_KIWI_FINE: {
+      int f = (int)lroundf(v) - 50;
+      if (!f) return "0 Hz";
+      snprintf(b, sizeof b, "%+d Hz", f * 20);
+      return b;
+    }
+    case P_KIWI_BW: {
+      KiwiTune t = kiwi_tune(s);
+      int w = t.hi - t.lo;
+      if (w < 1000) snprintf(b, sizeof b, "%d Hz", w);
+      else snprintf(b, sizeof b, "%.1f kHz", w / 1000.0);
       return b;
     }
     case P_ATK: return ms(expmap(v, 1.f, 4000.f));
@@ -274,9 +372,92 @@ void step_station(Inst* s, int dirn) {
   play_station(s, s->list[i]);
 }
 
+// ------------------------------------------------------------------------------------------------ the receivers (KIWISDR)
+std::string kiwi_row_text(const KiwiRx& r) {
+  char b[128];
+  std::string name = r.name;
+  if (name.size() > 24) name = name.substr(0, 23) + "~";
+  const char* tail = "";
+  char users[32] = "";
+  if (r.offline) tail = "  OFFLINE";
+  else if (r.users >= 0 && r.users_max > 0) {
+    if (r.users >= r.users_max) tail = "  FULL";
+    else { snprintf(users, sizeof users, "  %d/%d", r.users, r.users_max); tail = users; }
+  }
+  snprintf(b, sizeof b, "%s  %s%s", name.c_str(), r.loc.c_str(), tail);
+  return b;
+}
+
+int kiwi_index(const Inst* s) {
+  if (!s->kcur_valid) return -1;
+  for (size_t i = 0; i < s->kiwis.size(); ++i) if (s->kiwis[i].id() == s->kcur.id()) return (int)i;
+  return -1;
+}
+
+void kiwi_probe_page(Inst* s) {
+  std::vector<std::string> ids;
+  for (int r = 0; r < NUM_ROWS; ++r) {
+    int i = s->kpage * NUM_ROWS + r;
+    if (i < (int)s->kiwis.size()) ids.push_back(s->kiwis[i].id());
+  }
+  if (s->kdir.probe(ids)) s->kprobe = false;
+}
+
+void play_kiwi(Inst* s, const KiwiRx& r) {
+  s->kcur = r;
+  s->kcur_valid = true;
+  s->want_src = SRC_KIWI;
+  s->kbd = false;
+  s->title.clear();
+  s->status = "CONNECTING";
+  s->src.play_kiwi(r, kiwi_tune(s));
+  s->flowing = false;
+  s->wait_transport = s->radio_sync && !s->tempo.playing;
+  s->display_rev++;
+}
+
+void step_kiwi(Inst* s, int dirn) {
+  if (s->kiwis.empty()) return;
+  int n = (int)s->kiwis.size();
+  int i = kiwi_index(s);
+  i = i < 0 ? (dirn > 0 ? 0 : n - 1) : (i + dirn + n) % n;
+  if (s->kpage != i / NUM_ROWS) { s->kpage = i / NUM_ROWS; s->kprobe = true; }
+  play_kiwi(s, s->kiwis[i]);
+}
+
+void set_kiwi_mode(Inst* s, int m) {
+  s->kmode = m;
+  touch(s, P_KIWI_BW);
+  kiwi_retune(s);
+}
+
+// BAND: a jump to the band's own frequency, mode and step (TUNE goes on from there, anywhere)
+void kiwi_band_changed(Inst* s) {
+  const KiwiBand& b = kband(s);
+  s->kfreq = b.def;
+  s->kmode = b.mode;
+  if (!b.nlist) {
+    s->v[P_KIWI_STEP] = (float)kiwi_step_option(b.step);
+    moved(s, "kiwi_step");
+  }
+  kiwi_retune(s);
+}
+
+// ENTER kHz: the keyboard types a frequency
+void kiwi_enter(Inst* s) {
+  double f = atof(s->kquery.c_str());
+  s->kbd = false;
+  s->kentry = false;
+  if (s->kquery.empty()) return;
+  if (f < 0 || f > kKiwiTop) { flash(s, "0 .. 30000 kHz"); return; }
+  s->kfreq = f;
+  kiwi_retune(s);
+}
+
 int view_of(const Inst* s) {
   if (s->want_src == SRC_PHONE) return 2;
   if (s->want_src == SRC_AIRPLAY) return 3;
+  if (s->want_src == SRC_KIWI) return s->kbd ? 1 : 4;
   return s->kbd ? 1 : 0;
 }
 
@@ -322,6 +503,21 @@ void loop_capture(Inst* s) {
 }
 
 void press(Inst* s, int p) {
+  if (s->kentry && p >= P_KB_1 && p <= P_KB_M) {   // a frequency: digits only
+    const char* c = PARAM_DEFS[p].name;
+    if (c[0] >= '0' && c[0] <= '9' && s->kquery.size() < 9) s->kquery += c;
+    s->display_rev++;
+    return;
+  }
+  if (s->kentry && (p == P_KB_SPACE || p == P_KB_DEL || p == P_KB_CLR || p == P_KB_GO || p == P_KB_CLOSE)) {
+    if (p == P_KB_SPACE && s->kquery.find('.') == std::string::npos && s->kquery.size() < 9) s->kquery += s->kquery.empty() ? "0." : ".";
+    else if (p == P_KB_DEL && !s->kquery.empty()) s->kquery.pop_back();
+    else if (p == P_KB_CLR) s->kquery.clear();
+    else if (p == P_KB_GO) kiwi_enter(s);
+    else if (p == P_KB_CLOSE) { s->kbd = false; s->kentry = false; }
+    s->display_rev++;
+    return;
+  }
   if (p >= P_KB_1 && p <= P_KB_M) {   // the keyboard's characters
     if (s->query.size() < 40) s->query += PARAM_DEFS[p].name;
     s->display_rev++;
@@ -340,9 +536,22 @@ void press(Inst* s, int p) {
       if (s->cur_valid) play_station(s, s->cur);
       else { s->src.stop(); s->radio_on = false; }
       break;
-    case P_SRC_PHONE: s->want_src = SRC_PHONE; s->kbd = false; s->src.play_phone(); s->title.clear(); s->flowing = false; s->ip = s->src.ip_text(); break;
-    case P_SRC_AIR: s->want_src = SRC_AIRPLAY; s->kbd = false; s->src.play_airplay(); s->title.clear(); s->flowing = false; s->ip = s->src.ip_text(); break;
-    case P_SEARCH: s->kbd = !s->kbd; if (s->want_src != SRC_RADIO) { s->want_src = SRC_RADIO; s->src.stop(); } break;
+    case P_SRC_PHONE: s->want_src = SRC_PHONE; s->kbd = false; s->kentry = false; s->src.play_phone(); s->title.clear(); s->flowing = false; s->ip = s->src.ip_text(); break;
+    case P_SRC_AIR: s->want_src = SRC_AIRPLAY; s->kbd = false; s->kentry = false; s->src.play_airplay(); s->title.clear(); s->flowing = false; s->ip = s->src.ip_text(); break;
+    case P_SRC_KIWI:
+      s->kbd = false;
+      s->kentry = false;
+      s->kprobe = true;
+      if (s->kcur_valid) play_kiwi(s, s->kcur);
+      else { s->want_src = SRC_KIWI; s->src.stop(); s->title.clear(); s->flowing = false; }
+      break;
+    case P_KIWI_ENTER: s->kbd = true; s->kentry = true; s->kquery.clear(); break;
+    case P_KM_AM: set_kiwi_mode(s, KM_AM); break;
+    case P_KM_USB: set_kiwi_mode(s, KM_USB); break;
+    case P_KM_LSB: set_kiwi_mode(s, KM_LSB); break;
+    case P_KM_CW: set_kiwi_mode(s, KM_CW); break;
+    case P_KM_NFM: set_kiwi_mode(s, KM_NFM); break;
+    case P_SEARCH: s->kentry = false; s->kbd = !s->kbd; if (s->want_src != SRC_RADIO) { s->want_src = SRC_RADIO; s->src.stop(); } break;
     case P_FAVS: show_favs(s); break;
     case P_TOP: s->list_mode = LIST_BROWSE; request_list(s, false); break;
     case P_FAV:
@@ -353,10 +562,13 @@ void press(Inst* s, int p) {
         if (s->list_mode == LIST_FAVS) show_favs(s);
       } else flash(s, "PLAY A STATION FIRST");
       break;
-    case P_PREV: step_station(s, -1); break;
-    case P_NEXT: step_station(s, +1); break;
+    case P_PREV: if (s->want_src == SRC_KIWI) step_kiwi(s, -1); else step_station(s, -1); break;
+    case P_NEXT: if (s->want_src == SRC_KIWI) step_kiwi(s, +1); else step_station(s, +1); break;
     case P_PLAY:
-      if (s->want_src == SRC_RADIO) {
+      if (s->want_src == SRC_KIWI) {
+        if (s->kcur_valid) play_kiwi(s, s->kcur);
+        else if (!s->kiwis.empty()) play_kiwi(s, s->kiwis[std::min((int)s->kiwis.size() - 1, s->kpage * NUM_ROWS)]);
+      } else if (s->want_src == SRC_RADIO) {
         if (s->cur_valid) play_station(s, s->cur);
         else if (!s->list.empty()) play_station(s, s->list[s->page * NUM_ROWS < (int)s->list.size() ? s->page * NUM_ROWS : 0]);
       } else if (s->want_src == SRC_PHONE) s->src.play_phone();
@@ -364,8 +576,15 @@ void press(Inst* s, int p) {
       break;
     case P_STOP: s->src.stop(); s->radio_on = false; s->wait_transport = false; s->flowing = false; break;
     case P_SYNC: s->radio_sync = !s->radio_sync; flash(s, s->radio_sync ? "SYNC: STARTS WITH MPC'S PLAY" : "SYNC OFF"); if (!s->radio_sync) s->wait_transport = false; break;
-    case P_PG_PREV: if (s->page > 0) s->page--; break;
+    case P_PG_PREV:
+      if (s->want_src == SRC_KIWI) { if (s->kpage > 0) { s->kpage--; s->kprobe = true; } }
+      else if (s->page > 0) s->page--;
+      break;
     case P_PG_NEXT: {
+      if (s->want_src == SRC_KIWI) {
+        if ((s->kpage + 1) * NUM_ROWS < (int)s->kiwis.size()) { s->kpage++; s->kprobe = true; }
+        break;
+      }
       int pages = ((int)s->list.size() + NUM_ROWS - 1) / NUM_ROWS;
       if (s->page + 1 < pages) s->page++;
       else if (s->more && !s->fetching && s->list_mode != LIST_FAVS) { s->page++; request_list(s, true); }
@@ -473,6 +692,12 @@ bool led(const Inst* s, int p) {
     case P_SRC_RADIO: return s->want_src == SRC_RADIO;
     case P_SRC_PHONE: return s->want_src == SRC_PHONE;
     case P_SRC_AIR: return s->want_src == SRC_AIRPLAY;
+    case P_SRC_KIWI: return s->want_src == SRC_KIWI;
+    case P_KM_AM: return s->kmode == KM_AM;
+    case P_KM_USB: return s->kmode == KM_USB;
+    case P_KM_LSB: return s->kmode == KM_LSB;
+    case P_KM_CW: return s->kmode == KM_CW;
+    case P_KM_NFM: return s->kmode == KM_NFM;
     case P_SEARCH: return s->kbd || s->list_mode == LIST_SEARCH;
     case P_FAVS: return s->list_mode == LIST_FAVS;
     case P_TOP: return s->list_mode == LIST_BROWSE;
@@ -522,6 +747,11 @@ bool led(const Inst* s, int p) {
 
 // ------------------------------------------------------------------------------------------------ texts
 std::string st_name(const Inst* s) {
+  if (s->want_src == SRC_KIWI) {
+    char b[64];
+    snprintf(b, sizeof b, "%.2f kHz  %s", kiwi_khz(s), KIWI_MODE_NAMES[s->kmode]);
+    return b;
+  }
   if (s->want_src == SRC_PHONE) return "PHONE  (ROC)";
   if (s->want_src == SRC_AIRPLAY) return "AIRPLAY";
   if (s->cur_valid) return s->cur.name;
@@ -533,6 +763,20 @@ std::string st_info(const Inst* s) {
   int st = s->src.state.load();
   const char* state = st == 4 ? "ERROR" : (s->wait_transport ? "WAITING FOR PLAY" : (st == 0 ? "STOPPED" : (s->flowing ? "PLAYING" : (st == 1 ? "CONNECTING" : "BUFFERING"))));
   float buf = s->src.ring.fill() / kSR;
+  if (s->want_src == SRC_KIWI) {
+    if (!s->kcur_valid) return "KIWISDR: PICK A RECEIVER BELOW";
+    float dbm = s->src.kiwi_rssi.load();
+    KiwiTune t = kiwi_tune(s);
+    char sm[24] = "S--";
+    if (dbm > -190.f && st == 3) {   // S9 = -73 dBm, 6 dB an S unit
+      int su = (int)floorf((dbm + 127.f) / 6.f);
+      if (dbm > -73.f) snprintf(sm, sizeof sm, "S9+%d", (int)lroundf(dbm + 73.f));
+      else snprintf(sm, sizeof sm, "S%d", su < 0 ? 0 : su);
+    }
+    snprintf(b, sizeof b, "%s %s  BW %.1fk  BUF %.1fs  %s", sm, dbm > -190.f && st == 3 ? (std::to_string((int)lroundf(dbm)) + " dBm").c_str() : "",
+             (t.hi - t.lo) / 1000.f, buf, state);
+    return b;
+  }
   if (s->want_src == SRC_RADIO && s->cur_valid) {
     snprintf(b, sizeof b, "%s  %dK %s  BUF %.1fs  %s", s->cur.country.empty() ? "--" : s->cur.country.c_str(), s->cur.bitrate,
              s->cur.codec.c_str(), buf, state);
@@ -561,6 +805,13 @@ std::string page_text(const Inst* s) {
   return b;
 }
 
+std::string kiwi_text(const Inst* s) {
+  char b[128];
+  int pages = std::max(1, ((int)s->kiwis.size() + NUM_ROWS - 1) / NUM_ROWS);
+  snprintf(b, sizeof b, "KIWISDR RECEIVERS   PAGE %d/%d   TAP ONE TO LISTEN", s->kpage + 1, pages);
+  return b;
+}
+
 std::string tape_text(const Inst* s) {
   char b[128];
   const Looper& L = s->looper;
@@ -578,11 +829,21 @@ std::string readout(const Inst* s) {
   return "EVIL TUNER XXL";
 }
 
+// a knob's value from the host or a saved project: an option index, a whole number, or 0..1
+float knob_value(int i, float f) {
+  const ParamDef& d = PARAM_DEFS[i];
+  if (!(f == f)) f = d.def;   // NaN
+  if (d.nopts) return clampf(roundf(f), 0, d.nopts - 1);
+  if (d.hi > 1.f) return clampf(roundf(f), d.lo, d.hi);
+  return clampf(f, d.lo, d.hi);
+}
+
 // ------------------------------------------------------------------------------------------------ the state
 std::string serialize(const Inst* s) {
   std::string o = "evil-tuner-xxl 1\n";
   char b[256];
-  for (int i = 0; i < NUM_KNOBS; ++i) { snprintf(b, sizeof b, "k %s %.6f\n", PARAM_DEFS[i].key, s->v[i]); o += b; }
+  for (int i = 0; i < P_COUNT; ++i)
+    if (PARAM_DEFS[i].kind == PK_KNOB) { snprintf(b, sizeof b, "k %s %.6f\n", PARAM_DEFS[i].key, s->v[i]); o += b; }
   snprintf(b, sizeof b, "t %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", s->freeze, s->keys_mode, s->char_on,
            s->sat_on, s->lim_on, s->char_pre, s->dly_on, s->verb_on, s->gate_on, s->duck_on, s->lsync[0], s->lsync[1], s->lsync[2],
            s->radio_sync, s->filt_mode, s->osc_wave, s->dly.tape, s->dly.sync, s->gate.steps, s->want_src);
@@ -592,6 +853,11 @@ std::string serialize(const Inst* s) {
     o += "s\t" + clean(s->cur.uuid) + "\t" + clean(s->cur.name) + "\t" + clean(s->cur.url) + "\t" + clean(s->cur.codec) + "\t" +
          std::to_string(s->cur.bitrate) + "\t" + clean(s->cur.country) + "\n";
   o += "q\t" + clean(s->query) + "\n";
+  snprintf(b, sizeof b, "m %d\nf %.3f\n", s->kmode, s->kfreq);
+  o += b;
+  if (s->kcur_valid)
+    o += "w\t" + clean(s->kcur.host) + "\t" + std::to_string(s->kcur.port) + "\t" + clean(s->kcur.path) + "\t" +
+         clean(s->kcur.name) + "\t" + clean(s->kcur.loc) + "\n";
   return o;
 }
 
@@ -606,12 +872,8 @@ void deserialize(Inst* s, const char* text) {
       char key[64];
       float val;
       if (sscanf(line.c_str() + 2, "%63s %f", key, &val) == 2)
-        for (int i = 0; i < NUM_KNOBS; ++i)
-          if (!strcmp(PARAM_DEFS[i].key, key)) {
-            if (PARAM_DEFS[i].nopts) val = clampf(roundf(val), 0, PARAM_DEFS[i].nopts - 1);
-            else val = clampf(val, 0, 1);
-            s->v[i] = val;
-          }
+        for (int i = 0; i < P_COUNT; ++i)
+          if (PARAM_DEFS[i].kind == PK_KNOB && !strcmp(PARAM_DEFS[i].key, key)) s->v[i] = knob_value(i, val);
     } else if (line.compare(0, 2, "t ") == 0) {
       int t[20] = {0};
       int n = sscanf(line.c_str() + 2, "%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d", &t[0], &t[1], &t[2], &t[3], &t[4],
@@ -624,6 +886,7 @@ void deserialize(Inst* s, const char* text) {
         s->grains.frozen = s->freeze;
         int src = t[19];
         if (src == SRC_PHONE || src == SRC_AIRPLAY) s->want_src = src;   // a receiver waits again; radio doesn't autoplay
+        if (src == SRC_KIWI) s->want_src = src;                          // shows the receivers; plays on PLAY
       }
     } else if (line.compare(0, 2, "s\t") == 0) {
       std::vector<std::string> c;
@@ -635,10 +898,31 @@ void deserialize(Inst* s, const char* text) {
       }
     } else if (line.compare(0, 2, "q\t") == 0) {
       s->query = line.substr(2);
+    } else if (line.compare(0, 2, "f ") == 0) {
+      double f = atof(line.c_str() + 2);
+      if (f >= 0 && f <= kKiwiTop) s->kfreq = f;
+    } else if (line.compare(0, 2, "m ") == 0) {
+      int m = atoi(line.c_str() + 2);
+      if (m >= 0 && m < KIWI_NUM_MODES) s->kmode = m;
+    } else if (line.compare(0, 2, "w\t") == 0) {
+      std::vector<std::string> c;
+      size_t a = 2;
+      for (;;) { size_t b = line.find('\t', a); c.push_back(line.substr(a, b == std::string::npos ? std::string::npos : b - a)); if (b == std::string::npos) break; a = b + 1; }
+      if (c.size() >= 5 && !c[0].empty()) {
+        s->kcur = KiwiRx();
+        s->kcur.host = c[0]; s->kcur.port = atoi(c[1].c_str()); s->kcur.path = c[2]; s->kcur.name = c[3]; s->kcur.loc = c[4];
+        if (s->kcur.port <= 0 || s->kcur.port > 65535) s->kcur.port = 8073;
+        s->kcur_valid = true;
+      }
     }
   }
   if (s->want_src == SRC_PHONE) s->src.play_phone();
   else if (s->want_src == SRC_AIRPLAY) s->src.play_airplay();
+  if (s->kcur_valid) {   // the page of the saved receiver
+    int i = kiwi_index(s);
+    if (i >= 0) s->kpage = i / NUM_ROWS;
+  }
+  s->kprobe = true;
   s->display_rev++;
 }
 
@@ -646,7 +930,7 @@ void deserialize(Inst* s, const char* text) {
 void read_source(Inst* s, float* l, float* r, int n) {
   Ring& ring = s->src.ring;
   int kind = s->src.kind.load();
-  float target = kind == SRC_PHONE ? 0.25f : (kind == SRC_AIRPLAY ? 0.6f : 2.0f);   // seconds kept in hand
+  float target = kind == SRC_PHONE ? 0.25f : (kind == SRC_AIRPLAY || kind == SRC_KIWI ? 0.6f : 2.0f);   // seconds kept in hand
   uint32_t fill = ring.fill();
   float fs = fill / kSR;
   if (s->wait_transport) {
@@ -937,6 +1221,8 @@ void* create(const char* dataDir) {
   s->gate.rng.s = 0x51ED27u;
   s->src.start(s->plugin_dir, s->data_dir);
   s->dir.start(s->data_dir);
+  s->kdir.start(s->data_dir);
+  s->kiwis = s->kdir.list;
   s->stretcher.start();
   request_list(s, false);   // the most played stations, to start with
   return s;
@@ -946,6 +1232,7 @@ void destroy(void* p) {
   Inst* s = static_cast<Inst*>(p);
   s->src.stop_all();
   s->dir.stop();
+  s->kdir.stop();
   s->stretcher.stop();
   if (s->rv[0]) kPlateReverb.destroy(s->rv[0]);
   if (s->rv[1]) kRoomReverb.destroy(s->rv[1]);
@@ -1008,11 +1295,18 @@ void set_param(void* p, const char* k, const char* val) {
   const ParamDef& d = PARAM_DEFS[i];
   switch (d.kind) {
     case PK_KNOB: {
-      float f = (float)atof(val);
-      f = d.nopts ? clampf(roundf(f), 0, d.nopts - 1) : clampf(f, 0, 1);
+      float f = knob_value(i, (float)atof(val));
+      if (i == P_KIWI_TUNE) {   // endless: a move, not a value
+        kiwi_turn(s, f);
+        kiwi_retune(s);
+        touch(s, i);
+        break;
+      }
       bool changed = s->v[i] != f;
       s->v[i] = f;
       if (changed) {
+        if (i == P_KIWI_BAND) kiwi_band_changed(s);
+        else if (i == P_KIWI_BW) kiwi_retune(s);
         if (i == P_GENRE || i == P_COUNTRY || i == P_SORT || i == P_KBPS) {
           if (s->list_mode == LIST_FAVS) s->list_mode = LIST_BROWSE;
           s->browse_countdown = 172;   // half a second after the last turn
@@ -1027,6 +1321,11 @@ void set_param(void* p, const char* k, const char* val) {
     }
     case PK_KEY: press(s, i); break;
     case PK_ROW: {
+      if (s->want_src == SRC_KIWI) {
+        int k = s->kpage * NUM_ROWS + (i - P_ROW1);
+        if (k < (int)s->kiwis.size()) play_kiwi(s, s->kiwis[k]);
+        break;
+      }
       int idx = s->page * NUM_ROWS + (i - P_ROW1);
       if (idx < (int)s->list.size()) play_station(s, s->list[idx]);
       break;
@@ -1055,7 +1354,7 @@ int get_param(void* p, const char* k, char* buf, int n) {
     std::string base(k, kl - 8);
     int on;
     int i = key_index(base.c_str(), &on);
-    if (i < 0 || i >= NUM_KNOBS) return 0;
+    if (i < 0 || PARAM_DEFS[i].kind != PK_KNOB) return 0;
     return put(buf, n, value_text(s, i));
   }
   int on;
@@ -1065,7 +1364,7 @@ int get_param(void* p, const char* k, char* buf, int n) {
   switch (d.kind) {
     case PK_KNOB:
       if (on) return 0;
-      if (d.nopts) snprintf(t, sizeof t, "%d", (int)lroundf(s->v[i]));
+      if (d.nopts || d.hi > 1.f) snprintf(t, sizeof t, "%d", (int)lroundf(s->v[i]));
       else snprintf(t, sizeof t, "%.5f", s->v[i]);
       return put(buf, n, t);
     case PK_KEY:
@@ -1076,6 +1375,12 @@ int get_param(void* p, const char* k, char* buf, int n) {
       snprintf(t, sizeof t, "%d", view_of(s));
       return put(buf, n, t);
     case PK_ROW: {
+      if (s->want_src == SRC_KIWI) {
+        int k = s->kpage * NUM_ROWS + (i - P_ROW1);
+        bool has = k < (int)s->kiwis.size();
+        if (on) return put(buf, n, has && k == kiwi_index(s) ? "1" : "0");
+        return put(buf, n, has ? kiwi_row_text(s->kiwis[k]) : " ");
+      }
       int idx = s->page * NUM_ROWS + (i - P_ROW1);
       bool has = idx < (int)s->list.size();
       if (on) {
@@ -1089,13 +1394,22 @@ int get_param(void* p, const char* k, char* buf, int n) {
       switch (i) {
         case P_ST_NAME: return put(buf, n, st_name(s));
         case P_ST_TITLE: {
+          if (s->want_src == SRC_KIWI) {
+            int st = s->src.state.load();
+            if (st == 4 || st == 1 || st == 2) return put(buf, n, s->status);
+            if (!s->title.empty()) return put(buf, n, s->title);
+            return put(buf, n, s->kcur_valid ? s->kcur.name : "SHORTWAVE  ·  KIWISDR.COM");
+          }
           if (!s->title.empty()) return put(buf, n, s->title);
           if (s->src.state.load() == 4 || s->src.state.load() == 1) return put(buf, n, s->status);
           return put(buf, n, s->want_src == SRC_RADIO && !s->cur_valid ? "INTERNET RADIO  ·  RADIO-BROWSER.INFO" : " ");
         }
         case P_ST_INFO: return put(buf, n, st_info(s));
         case P_PAGE_TXT: return put(buf, n, page_text(s));
-        case P_QUERY: return put(buf, n, s->query + ((s->clock >> 6) & 1 ? "_" : " "));
+        case P_KIWI_TXT: return put(buf, n, kiwi_text(s));
+        case P_QUERY:
+          if (s->kentry) return put(buf, n, "FREQUENCY: " + s->kquery + ((s->clock >> 6) & 1 ? "_" : " ") + " kHz   (SPACE = .)");
+          return put(buf, n, s->query + ((s->clock >> 6) & 1 ? "_" : " "));
         case P_PHONE_TXT:
           return put(buf, n, s->ip.empty() ? "NO NETWORK: JOIN WI-FI OR A PHONE HOTSPOT" : "ROC DROID -> SEND TO " + s->ip + "  PORT 10001");
         case P_AIR_TXT:
@@ -1134,6 +1448,16 @@ void render(void* p, int16_t* out, int frames) {
       s->fetching = false;
       s->display_rev++;
     }
+  }
+  {
+    std::vector<KiwiRx> st;
+    if (s->kdir.take(st)) {
+      for (auto& r : st)
+        for (auto& k : s->kiwis)
+          if (k.id() == r.id()) { k.users = r.users; k.users_max = r.users_max; k.offline = r.offline; }
+      s->display_rev++;
+    }
+    if (s->kprobe && s->want_src == SRC_KIWI && !s->kbd) kiwi_probe_page(s);
   }
   if (s->browse_countdown > 0 && --s->browse_countdown == 0) { if (s->list_mode == LIST_FAVS) s->list_mode = LIST_BROWSE; if (s->list_mode == LIST_SEARCH) s->list_mode = LIST_BROWSE; request_list(s, false); }
   if (s->stretch_busy) {
@@ -1176,6 +1500,15 @@ const mpc_engine_t kEngine = {create, destroy, midi, set_param, get_param, rende
 
 extern "C" const mpc_engine_t* mpc_engine(void) { return &kEngine; }
 
+// knobs the engine moved by itself (BAND resets TUNE and FINE; TUNE stops at the band's end): the wrapper tells MPC
+extern "C" int mpc_engine_changed(void* inst, char* key, int len) {
+  Inst* s = static_cast<Inst*>(inst);
+  if (s->changed.empty() || len <= 0) return 0;
+  snprintf(key, (size_t)len, "%s", s->changed.back().c_str());
+  s->changed.pop_back();
+  return 1;
+}
+
 #ifdef ET_TEST
 extern "C" void et_test_set_station(void* inst, const char* url) {
   Station st;
@@ -1184,5 +1517,13 @@ extern "C" void et_test_set_station(void* inst, const char* url) {
   st.codec = "MP3";
   st.bitrate = 128;
   play_station(static_cast<Inst*>(inst), st);
+}
+extern "C" void et_test_set_kiwi(void* inst, const char* host, int port) {
+  KiwiRx r;
+  r.host = host;
+  r.port = port;
+  r.name = "TEST RECEIVER";
+  r.loc = "XX";
+  play_kiwi(static_cast<Inst*>(inst), r);
 }
 #endif

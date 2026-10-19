@@ -18,11 +18,14 @@
 #include <vector>
 
 #define ET_SR 44100
-#define ET_VERSION "0.1.0"
+#define ET_VERSION "0.2.0"
 
 namespace et {
 
 inline float clampf(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
+
+// a line in /tmp/eviltuner.log (source.cc)
+void log_line(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 
 // ------------------------------------------------------------------------------------------------ single-producer ring
 // Interleaved stereo float frames. The source's reader thread writes, the audio thread reads.
@@ -63,7 +66,50 @@ struct Station {
   bool hls = false;
 };
 
-enum SourceKind { SRC_NONE = 0, SRC_RADIO, SRC_PHONE, SRC_AIRPLAY };
+enum SourceKind { SRC_NONE = 0, SRC_RADIO, SRC_PHONE, SRC_AIRPLAY, SRC_KIWI };
+
+// ------------------------------------------------------------------------------------------------ KiwiSDR (kiwi.cc)
+// A public KiwiSDR receiver: http://host:port/path (the path is empty unless it sits behind a web server's sub-folder)
+struct KiwiRx {
+  std::string host, path, name, loc;
+  int port = 8073;
+  bool user = false;               // from the user's own kiwisdr.txt
+  // its /status, when probed (kiwi.cc KiwiDir)
+  int users = -1, users_max = -1;  // -1: not known yet
+  bool offline = false;
+  std::string id() const { return host + ":" + std::to_string(port) + path; }
+};
+
+// What the receiver is told to play: the frequency (kHz), the mode and the passband (Hz, around the carrier)
+struct KiwiTune {
+  double khz = 6070.0;
+  int mode = 0;                    // KM_AM .. KM_NFM (param_defs.h)
+  int lo = -4900, hi = 4900;
+};
+const char* kiwi_mode_word(int mode);   // the Kiwi protocol's name for a mode ("am", "usb", ...)
+
+// The receiver list (the user's own kiwisdr.txt first, then the built-in one) and a worker that asks the shown
+// receivers for their /status (users, offline), at most every few minutes each.
+class KiwiDir {
+ public:
+  void start(const std::string& data_dir);
+  void stop();
+  std::vector<KiwiRx> list;                        // the audio / UI thread's copy (loaded once, at start)
+  bool probe(const std::vector<std::string>& ids);  // the receivers on screen: ask their status (newest request wins;
+                                                    // false: busy, ask again)
+  bool take(std::vector<KiwiRx>& status);           // try_lock: probed receivers since the last take
+  static std::vector<KiwiRx> builtin();
+  static bool parse_line(const std::string& line, KiwiRx& rx);   // "host[:port][/path] [name...]"
+  static void parse_status(const std::string& body, KiwiRx& rx);
+ private:
+  void worker();
+  std::thread th_;
+  std::mutex mu_;
+  std::condition_variable cv_;
+  std::vector<KiwiRx> want_, got_;
+  std::vector<std::pair<std::string, uint64_t>> asked_;   // id, when (ms): not again for a while
+  std::atomic<bool> quit_{false};
+};
 
 // ------------------------------------------------------------------------------------------------ the sources (source.cc)
 class Sources {
@@ -74,12 +120,15 @@ class Sources {
   void play_radio(const Station& s);
   void play_phone();
   void play_airplay();
+  void play_kiwi(const KiwiRx& rx, const KiwiTune& t);
+  void kiwi_tune(const KiwiTune& t);               // retune while connected (lock-free: any thread)
   void stop();                                     // silence, children ended
   // the audio thread's view
   Ring ring;
   std::atomic<int> kind{SRC_NONE};
   std::atomic<int> state{0};                       // 0 idle, 1 connecting, 2 buffering, 3 playing, 4 error
   std::atomic<uint32_t> title_rev{0};
+  std::atomic<float> kiwi_rssi{-200.f};            // dBm of the last audio block (-200: none yet)
   bool title(std::string& out);                    // try_lock: the "now playing" text, when it changed
   bool status(std::string& out);                   // try_lock: a short status / error line
   std::string ip_text();                           // this device's address(es), for the PHONE / AIRPLAY pages
@@ -88,6 +137,8 @@ class Sources {
   void worker();
   void run_radio(const Station& s, uint32_t gen);
   void run_child(int kind, uint32_t gen);
+  void run_kiwi(const KiwiRx& rx, uint32_t gen);   // kiwi.cc
+  bool kiwi_tune_read(KiwiTune& t, uint32_t& rev);
   void set_title(const std::string& t);
   void set_status(const std::string& t);
   std::thread th_;
@@ -95,6 +146,11 @@ class Sources {
   std::condition_variable cv_;
   int want_kind_ = SRC_NONE;
   Station want_station_;
+  KiwiRx want_rx_;
+  // the tuning mailbox (a seqlock: odd while being written)
+  std::atomic<uint32_t> tune_seq_{0};
+  std::atomic<int64_t> tune_hz_{6070000};
+  std::atomic<int> tune_mode_{0}, tune_lo_{-4900}, tune_hi_{4900};
   std::atomic<uint32_t> gen_{0};
   std::atomic<bool> quit_{false};
   std::string title_, status_, data_dir_;
