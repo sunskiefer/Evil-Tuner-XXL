@@ -161,22 +161,27 @@ def knob_entry(key, name, d, opts):
 
 def params():
     out = []
+    # "poll": true on every string param: since mpc-vst-plugins bf1054ce a string param the layout.conf
+    # doesn't mention is never polled (gen_vst.py's no_poll rule), but ET's pages are drawn by
+    # tools/panel_art.py OUTSIDE layout.conf, which only names the top-row knobs -- without this the
+    # wrapper polls nothing, so no "<key>_on" LED and no readout text reaches the host (the 0.2.0 build
+    # polled them all; on the device the radio page's PLAY/STOP/SYNC and the station rows went dark).
     for key, name, d, opts in KNOBS:
         out.append(knob_entry(key, name, d, opts))
     for key, name in KEYS + KBD:
-        out.append({"key": key, "name": name, "display": "string", "min": 0, "max": 1, "default": 0, "kind": "KEY"})
+        out.append({"key": key, "name": name, "display": "string", "min": 0, "max": 1, "default": 0, "poll": True, "kind": "KEY"})
     for key, name in TEXTS:
-        out.append({"key": key, "name": name, "display": "string", "min": 0, "max": 1, "default": 0, "kind": "TEXT"})
+        out.append({"key": key, "name": name, "display": "string", "min": 0, "max": 1, "default": 0, "poll": True, "kind": "TEXT"})
     for i in range(NUM_ROWS):
         out.append({"key": "row%d" % (i + 1), "name": "STATION %d" % (i + 1), "display": "string", "min": 0, "max": 1,
-                    "default": 0, "kind": "ROW"})
+                    "default": 0, "poll": True, "kind": "ROW"})
     for key, name, opts in VIEWS:
         out.append({"key": key, "name": name, "options": opts, "default": 0, "kind": "VIEW"})
     # 0.2.0
     for key, name, d, opts in KNOBS2:
         out.append(knob_entry(key, name, d, opts))
     for key, name in KEYS2:
-        out.append({"key": key, "name": name, "display": "string", "min": 0, "max": 1, "default": 0, "kind": "KEY"})
+        out.append({"key": key, "name": name, "display": "string", "min": 0, "max": 1, "default": 0, "poll": True, "kind": "KEY"})
     return out
 
 
