@@ -436,7 +436,10 @@ def definition(key, actions, parts, ignore=False):
         "version": 4, "actions": actions,
         "backgroundData": {"version": 1, "focussed": {"version": 1, "colour": "0", "image": ""},
                            "unfocussed": {"version": 1, "colour": "0", "image": ""}},
-        "ignoreMousePresses": ignore, "disableCoarseDataWheel": False, "repeats": 1, "hideQLinkBounds": True,
+        # hideQLinkBounds must be False on EVERY definition, controls included: the per-bank
+        # Q-Link outline is suppressed per-component (RMXXXL on device: all defs false; ET's
+        # True on etKnob/etKey defs is why only the first, page-level box ever rendered)
+        "ignoreMousePresses": ignore, "disableCoarseDataWheel": False, "repeats": 1, "hideQLinkBounds": False,
         "componentsData": parts}}
 
 
@@ -717,6 +720,48 @@ def main(skin):
                                             "unfocussed": {"version": 1, "colour": "ff101010", "image": ""}}
             keep.append(e)
     cdefs["localComponentDefinitions"] = keep + sk.defs
+
+    # ---- Q-Link bounds: shadow_skin computed qlinkBoundsData from layout.conf's placeholder knob
+    # coordinates, but panel_art is what places the real controls -- rewrite each Q-Link page's
+    # column boxes from the actual placed geometry. Columns follow shadow_skin's qlink_for_slot
+    # (KNOB_QLINKS = 13,9,5,1,14,10,6,2): keys 0-3 = grid column 1, 4-7 = column 2, ...
+    def kid_rects(kids):
+        out = {}
+        for k in kids:
+            cd = k.get("componentData", {})
+            nm, b = cd.get("name"), k.get("bounds", {}).get("bounds")
+            if not nm or not b or cd.get("type") == "Image":
+                continue
+            x, y, w, h = map(int, b.split())
+            if nm in out:
+                ox, oy, ow, oh = out[nm]
+                x, y = min(ox, x), min(oy, y)
+                w, h = max(ox + ow, x + w) - x, max(oy + oh, y + h) - y
+            out[nm] = (x, y, w, h)
+        return out
+
+    def column_rects(keys, rects):
+        # One rect per Q-Link bank (keys 0-3 = bank 1 = Q1-4, 4-7 = bank 2 = Q5-8, ...), matching
+        # the RowTopDown map: stock (DrumSynthMulti) renders every bank's rect; an empty bank is
+        # "0 0 0 0" (no box). Always four entries, positionally.
+        cols = []
+        for c in range(4):
+            boxes = [rects[k] for k in keys[c * 4:c * 4 + 4] if k != "-" and k in rects]
+            if not boxes:
+                cols.append("0 0 0 0")
+                continue
+            x0, y0 = max(0, min(b[0] for b in boxes) - 6), max(0, min(b[1] for b in boxes) - 6)
+            x1, y1 = min(P.W, max(b[0] + b[2] for b in boxes) + 6), min(P.H, max(b[1] + b[3] for b in boxes) + 6)
+            cols.append("%d %d %d %d" % (x0, y0, x1 - x0, y1 - y0))
+        return cols
+
+    for p in tui["pageData"]["tabs"]:
+        ti = p.get("fnKeyIndex")
+        if ti is None or not (0 <= ti < len(P.TABS)) or P.TABS[ti] not in pages:
+            continue
+        if 0 <= p["fnKeySubIndex"] < len(P.QLINKS.get(ti, [])):
+            p["qlinkBoundsData"] = column_rects(P.QLINKS[ti][p["fnKeySubIndex"]], kid_rects(pages[P.TABS[ti]]))
+
     json.dump(tui, open(tui_path, "w"), indent=1)
     for f in os.listdir(skin):
         if f.endswith(".png") and f not in sk.used:
