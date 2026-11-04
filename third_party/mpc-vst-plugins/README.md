@@ -5,33 +5,27 @@
 Native plugins for **Akai MPC OS standalone devices** (MPC Live/One/X/Key, Force): a catalog to find and install them,
 an installer app, and the tools to build, test and release your own.
 
-> **MPC OS 2.x and 3.x.** Plugins here are built and tested on **MPC OS 3.x**. On **MPC OS 2.x** a plugin loads and its
-> Q-Links work, but its touchscreen page only appears if the plugin's skin is written in the older format 2.x reads. The
-> catalog checks from its files whether each release can work on 2.x, and marks one tested on a 2.x unit **MPC OS 2.x tested**
-> (3.x, the standard, gets no badge); the installers warn before putting a 3.x-only plugin on a device that looks like 2.x.
-> A 3.x-only plugin becomes 2.x-capable when its developer re-releases it with a compatible skin
-> (how, and what the catalog checks: [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x) below).
-
 ## Plugin catalog
 
-**[Open MPC - Plugin Catalog](https://sd88me.github.io/mpc-vst-plugins/)**: one browsable list of the community's VST2
+**[Open MPC - Plugin Catalog](https://open-mpc.github.io/)**: one browsable list of the community's VST2
 plugins for MPC OS, with each plugin's current version, license, source link and a checksummed download.
 
-[![The Open MPC - Plugin Catalog home page](docs/img/catalog-home.png)](https://sd88me.github.io/mpc-vst-plugins/)
+[![The Open MPC - Plugin Catalog home page](docs/img/catalog-home.png)](https://open-mpc.github.io/)
 
 - **Find a plugin.** Search, filter by kind, style, developer, license or distribution, and sort by recently updated or
-  most downloaded. Every version shows its date and SHA-256, and what it was tested on. Each plugin is **Verified** (the newest release was tested on real hardware and the test is recorded; shown per generation as Verified Gen1 and/or Verified Gen2), **Listed** (it passed the catalog's automatic release checks, but no hardware test is recorded) or **Experimental** (new or unproven, hidden unless you ask for it). None of these is a security review: nobody reads each plugin's code, so stick to developers you trust. There is an Atom feed
-  (`feed.xml`) of new releases.
-- **Install with the installer app.** The [MPC plugin installer](https://github.com/sd88me/mpc-vst-plugins/releases/latest) is a
+  most downloaded. Every version shows its date and SHA-256, and what it was tested on. Each plugin is **Verified** (the newest release was tested on real hardware and the test is recorded; shown per generation as Verified Gen1 and/or Verified Gen2), **Listed** (it passed the catalog's automatic release checks, but no hardware test is recorded) or **Experimental** (new or unproven, hidden unless you ask for it). None of these is a security review: nobody reads each plugin's code, so stick to developers you trust. Plugins one developer
+  publishes as a set from one repo (the Airwindows ports, for example) are one **collection** card: View all lists them by kind, each
+  with its own version and install tick, plus Pick all. There is an Atom feed (`feed.xml`) of new releases.
+- **Install with the installer app.** The [MPC plugin installer](https://github.com/open-mpc/mpc-vst-plugins/releases/latest) is a
   small Windows, Mac and Linux app: connect to your device, tick plugins from the catalog (or drop in zips, including
   build-yourself ones), and it checks each download, installs the batch with one MPC restart and backs up your settings
   first. It can also remove plugins (keeping your own files), install to an SD card or USB drive, register plugin folders
   MPC does not know about, and clean up old settings backups. Needs root SSH access. Source in
   [tools/desktop](tools/desktop/README.md).
-- **Guides on the site:** [install a downloaded plugin](https://sd88me.github.io/mpc-vst-plugins/install.html),
-  [build a plugin](https://sd88me.github.io/mpc-vst-plugins/build.html), the
-  [release workflow](https://sd88me.github.io/mpc-vst-plugins/workflow.html) and
-  [how to get yours listed](https://sd88me.github.io/mpc-vst-plugins/workflow.html#list-it-in-the-catalog).
+- **Guides on the site:** [install a downloaded plugin](https://open-mpc.github.io/install.html),
+  [build a plugin](https://open-mpc.github.io/build.html), the
+  [release workflow](https://open-mpc.github.io/workflow.html) and
+  [how to get yours listed](https://open-mpc.github.io/workflow.html#list-it-in-the-catalog).
 - **Get your plugin listed.** Publish a GitHub release built with `tools/release.py` (or the reusable
   `vst-release.yml` workflow), then open a PR adding one small file, `catalog/plugins/<id>.json`. After that new
   releases appear on their own: the catalog reads your releases every night and checks each zip. Open-source licenses,
@@ -56,7 +50,7 @@ authors, listed in the catalog, and installed by people on their own units.
 - **Plugins you can install today**: synths, samplers, drum machines, sequencers, an amp simulator and a record-digging
   streamer, from several authors. Among them are Dexed (DX7), JV-880, Acid, Maze Voice and Maze Sequencer, Crate Digger,
   Plaits and NAM, plus **Build it yourself** ports (Monomodule, Machinemodule) for engines that need your own firmware.
-  The [catalog](https://sd88me.github.io/mpc-vst-plugins/) has the current list and versions.
+  The [catalog](https://open-mpc.github.io/) has the current list and versions.
 - **A release you can trust.** Every release is built in CI on a pinned toolchain, checked against the catalog's rules
   (layout, checksums, glibc and CPU limits), smoke-tested on a real device and only then published. Each version
   shows its SHA-256 and what it was tested on.
@@ -67,7 +61,10 @@ authors, listed in the catalog, and installed by people on their own units.
   A plugin that needs more than 2.32 (up to 2.36) is listed as 3.x only; the catalog refuses more than 2.36.
 - **Tested on a Force** (MPC OS 3.9.1) as the reference device. Other Gen1 MPC OS devices (Live and Live II, One, X,
   Key 61) run the same `MPC` program. A user's MPC One on MPC OS 2.15 is what led to the glibc 2.31 builds; reports
-  from other models are welcome. Gen2 devices (e.g. Live III) are reported to be more locked down.
+  from other models are welcome. **Gen2 devices (aarch64: Live III, One G2, Key(s) G2) are supported** with a
+  separate build per plugin/addin; confirmed on a Live III (2026-10-23) for both. Gen2's root filesystem is
+  verity-based and more locked down than Gen1's: no SSH without a modded unit, and no writable `/etc` at all even
+  with root (docs/GEN2.md).
 
 What the plugins can do:
 - **Instruments and effects** that play from pads, keys and MIDI clips, with Q-Links, automation, and settings saved
@@ -82,7 +79,7 @@ What the tools can do:
 - **A release workflow** (`vst-release.yml`): a reusable GitHub Actions workflow that builds, tests, previews and
   packages a port into a draft release; you test the draft zip on a device, then publish.
 - **Skin Studio**, a page editor in your browser: double-click `SkinStudio.command` (macOS), `SkinStudio.bat`
-  (Windows) or `SkinStudio.sh` (Linux). It needs Python 3. See [docs/SKIN_STUDIO.md](docs/SKIN_STUDIO.md).
+  (Windows) or `SkinStudio.sh` (Linux). It needs Python 3. See [docs/SKIN_STUDIO.md](docs/SKIN_STUDIO.md). Several interfaces in one plugin: [docs/SKIN_VARIANTS.md](docs/SKIN_VARIANTS.md).
 
 ## How it works
 
@@ -131,7 +128,13 @@ design.
 - **MPC OS 2.x needs a compatible skin.** A plugin marked *MPC OS 3.x only* loads on 2.x and plays from the Q-Links, but its
   touchscreen page stays empty until its developer releases a version with a compatible skin. See
   [MPC OS 2.x vs 3.x](#mpc-os-2x-vs-3x).
-- **VST2 only.** MPC OS has no VST3 or LV2 support.
+- **A plugin shows no skin (just "Load Plugin") when its folder isn't a content location.** MPC finds a plugin's skin only through
+  a `Synths` folder listed under `SynthContentLocations` in `MPC.settings`. The plugin still loads from its `file=` path, so
+  it works but looks bare. Install into a listed folder (the installers warn when the target isn't one: `install.sh -t <folder>`),
+  or add the folder to the list with MPC stopped and `MPC.settings` backed up, then start MPC. A trailing `/` is fine. Checked
+  on a Live III (MPC 3.10.0), 2026-10-27; details in docs/NOTES.md.
+- **VST2 only.** MPC OS has no VST3 or LV2 support. (For a desktop DAW, a port can also be built as a VST3 on this machine:
+  [docs/DESKTOP_VST3.md](docs/DESKTOP_VST3.md); its window shows the port's MPC skin.)
 - **Setup needs root SSH to the device**, to copy the plugin and add it to `MPC.settings`, so it is for modded units.
   Adding a new plugin needs one MPC restart; the installers stop and start MPC for you (the service is `acvs`, or
   `inmusic-mpc` on firmware that has no `acvs`).
@@ -225,6 +228,9 @@ screen shows. If you are comfortable in a terminal and on 2.x, the output of thi
   checkout is needed.
 - `tools/html_art.py` + `tools/html_art/`: the optional browser renderer for skin artwork (`"art": "html"`):
   the same layouts drawn as SVG/CSS in headless Chromium, restyled per port with a stylesheet.
+- `tools/mpc310_on_391/`: a USB stick that runs the MPC 3.10 app on an MPC Live III that stays on MPC OS 3.9.1 (which
+  keeps the USB-script route developers use for SSH). Built on your computer from Akai's two official Gen2 update
+  images; nothing from Akai is in the repo. See [its README](tools/mpc310_on_391/README.md).
 - `tools/skin_check.py`: checks a built skin for overlapping touch areas, controls off the screen, Q-Links on hidden
   parameters and switches missing options; `gen_vst.py` runs it after every build.
 - `tools/studio.py` + `tools/skin_template.svg`: the skin studio. Auto-layout from a port's
@@ -233,9 +239,13 @@ screen shows. If you are comfortable in a terminal and on 2.x, the output of thi
   filmstrips (`tools/skin_assets.py`). See [docs/SKIN_STUDIO.md](docs/SKIN_STUDIO.md).
 - `tools/test_port.sh` + `tools/host_test.c`: the offline x86 test of a port under ASan (instances, params, options,
   popups, MIDI→audio, legacy `process()`, chunks), PASSED/FAILED.
+- `tools/build_vst3.sh` + `wrapper/vst3_wrap.c`: the same port as a VST3 for a desktop DAW (Linux), for local use, with
+  `wrapper/vst3_editor.c` drawing its MPC skin (flattened by `tools/desktop_skin.py`) in the plugin window;
+  `tools/test_vst3.sh` + `tools/vst3_host_test.c` test it offline under ASan. See [docs/DESKTOP_VST3.md](docs/DESKTOP_VST3.md).
 - `tools/bench.sh` + `tools/bench.c`: a CPU stress test run on the device, with a PASS/WARN/FAIL verdict for Gen1
   hardware. See [docs/BENCH.md](docs/BENCH.md).
 - `tools/desktop/`: the MPC plugin installer app (Go; a local web page that installs, updates and removes plugins over SSH).
+- `tools/plugin_manager_g2/`: the OpenMPC Plugin Manager VST, a VST that browses the catalog and installs, updates and removes plugins on the MPC itself (Gen2 first, with rollback; a fork of poloq's MIT `mpc-vst-manager`). See [its README](tools/plugin_manager_g2/README.md) and `DESIGN.md`.
 - `tools/mpc-store.sh`: the same install, update, remove, prune and sync from a shell on the device, for the catalog's one-line command.
 - `tools/release.py`: packages a plugin as one shareable zip with an installer, an uninstaller and generated
   INSTALL.md. See [docs/RELEASING.md](docs/RELEASING.md).

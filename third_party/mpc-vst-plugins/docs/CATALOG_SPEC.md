@@ -16,7 +16,7 @@ The plugin is **one self-contained folder**, the same shape as installers that c
 content folder and register it from a file inside it (Locrian's builds; verified on a Force 2026-09-29, `docs/NOTES.md`):
 ```
 <Vendor> - VST - <Name>/
-  version.xml          identical to our skin's version.xml (<plugincontent>, identifier <vendor>.vst.<name>, version 1.0.0.0)
+  version.xml          identical to our skin's version.xml (<plugincontent>, identifier <vendor>.vst.<name>, version from vst.json `version`, e.g. 3.1.2.0)
   plugin-meta.xml      the plugin-list <PLUGIN .../> element, with file="%payload-path%/<Vendor> - VST - <Name>/<so>"
   <name>.so            the plugin, inside the skin folder
   Plugin Skins/        the skin
@@ -52,6 +52,7 @@ anywhere, engines must find their data next to it (`wrapper/plugin_dir.h`, `MODU
 | `skin`, `folder` | skin folder name; the plugin folder in the zip, `portable/<skin>` |
 | `extras` | data shipped next to the `.so`, relative to the plugin folder |
 | `user_data` | list of folders inside the plugin folder that hold the user's own files; the installer keeps them (and moves them in from `/sdcard/vst` for an old-layout install) |
+| `user_files` | optional. The user's own files the plugin needs but a release cannot carry (a synth's ROMs): a list of folders, each `{path, label, description?, hint?, rules}`. `path` must be inside a `user_data` folder (so an upgrade keeps what was uploaded). Each rule says what a good file is: `label`, `ext` (e.g. `[".bin"]`), `size` or `size_min`/`size_max`, `header` (the file starts with this text) or `header_hex` (with these bytes, e.g. `"c0de"`), `signature` (it contains it) with `versions` (`[{prefix, label}]`: the text in the next `[...]` after the signature picks the label, first prefix match wins), and `unverified` + `note` for a kind whose content cannot be checked (it is listed as "looks right" and the plugin has the last word). For a plugin that loads files by name: `save_as` (the name the plugin loads; an upload is saved under it whatever it is called on the computer, and a file already in the folder passes only under that name), `names` (the only names the rule accepts, for kinds of the same size the plugin tells apart by name) and `name_contains` (text the name must contain). Given to `release.py` as `--user-files <json>`; `catalog_check.py` validates it (`tools/user_files.py`). The desktop installer's "Your ROMs and files" step checks each file with these rules before copying it into `<plugin folder>/<path>/` on the device, and lists what is there with the same checks. |
 | `arch` | ELF machine of the `.so`; the catalog accepts `armv7` only |
 | `max_glibc` | highest `GLIBC_x.y` symbol version needed. Up to 2.32 (MPC OS 2.x) it can be 2.x-compatible; above that and up to 2.36 it is listed as MPC OS 3.x only (a warning); above 2.36 is an error (MPC OS 3.x has 2.39, the catalog toolchain 2.36) |
 | `os_compat` | `["2.x", "3.x"]` or `["3.x"]`: the MPC OS generations the plugin works on. `release.py` computes it (`tools/skin_compat.py`); a developer may narrow `["2.x", "3.x"]` to `["3.x"]` by hand, never widen it |
@@ -89,6 +90,18 @@ Warnings (need a human look): `install.sh`/`uninstall.sh`/`plugin_list.awk` diff
 when `license` is not on the open-source list; the site shows a "Restricted use" badge.
 No version fields: they are read from the releases (or, for `build-yourself`, the git tags). `id` must equal the manifest `id`, `repo` the manifest
 `source_repo`. Stable releases are GitHub releases that are not prereleases; prereleases form the beta channel.
+`collection` is optional: the id of a `collections/<id>.json` with the same `repo` (below).
+
+### Collections: `collections/<id>.json` (2026-11-02, live)
+```json
+{ "id": "my-pack", "title": "My Pack", "author": "Someone", "repo": "someone/my-pack",
+  "summary": "One line about the set.", "screenshot": "optional https URL" }
+```
+Several entries from one repo shown as one card. A member entry sets `"collection": "my-pack"`; nothing else about it changes (own
+release, versions, checks, tier, uid and download). Rules (`catalog_build.py`): the file exists and is named `<id>.json`, every member's `repo`
+equals the collection's, at least 2 members, `summary` at most 350 characters, no other fields. More than 5 entries sharing a `repo` and
+`author` without a `collection` is a registry error (per author, so a repo hosting ports credited to different authors is not forced
+into one).
 
 ### Build-yourself entries
 For a plugin that cannot publish a zip because the build embeds the user's own firmware. Schema 1 is unchanged: the
@@ -131,6 +144,10 @@ newest first. A record is what `catalog_check.py --json` prints (`version`, `siz
 and `tested` (`[{device, firmware, date}]`), added by the builder. `tier` is `verified`|`listed`|`experimental`; `verified_on`
 (`[]`, or `gen1` and/or `gen2`) says which device generations the newest stable release was tested on: a `tested` device naming Gen2 is
 `gen2` (only on a version with an aarch64 build), any other is `gen1`. Readers must treat a missing `verified_on` on a verified plugin as `["gen1"]`.
+A version may also carry `assets.aarch64` and `gen2: true` (a Gen2 build beside the armv7 zip, docs/GEN2.md). **Gen2 only:** an entry whose `asset_pattern` names the
+aarch64 zip and no armv7 one (`"*-mpc-aarch64.zip"`) lists that zip alone: `assets: {aarch64: {...}}`, `gen2: true`, `gen2_only: true`, and `url`/`sha256`/`size` are the
+aarch64 zip (a reader that knows no `gen2_only` still parses it); in `catalog.tsv` the size, sha256 and url columns are `-`. A client on a Gen1 device or a Force must not offer a
+`gen2_only` version. The zip's manifest `arch` must be `aarch64`.
 `defer` is true when the zip's `install.sh` understands `-n` (the caller stops and starts MPC), false for an older installer that restarts MPC by
 itself; batch installers (the desktop app, `mpc-store.sh`) run such a zip separately and use the flag to say how often MPC will restart.
 
@@ -138,6 +155,12 @@ Every plugin also has `distribution`. For `build-yourself` plugins the record ca
 `build` and `components`, and each version is `{version, tag, date, channel: "stable", source_url, yanked, downloads: 0,
 warnings, tested, notes: ""}`: no `url`, `size`, `sha256`, `param_compat` or `manifest`. Readers must treat those
 keys as absent for such entries (an installer must skip them: there is nothing to download).
+
+`collections` (2026-11-02, live; absent when there are none): `[{id, title, author, repo, summary, screenshot?, members, kinds, tier,
+verified_on, downloads, updated, added}]`. `members` are plugin ids (by name), `kinds` a count per `kind`, `tier` the best member tier,
+`verified_on` the generations of its verified members, `downloads` the members' total, `updated` the newest member update and `added` the
+oldest member's. A member plugin carries `collection` (the id). The plugins themselves stay in `plugins` unchanged, so installers and
+`catalog.tsv` need nothing new; only the site groups them.
 
 ## Addins (`kind: "addin"`)
 An addin is a library MPC preloads (`docs/ADDINS.md`), released with `tools/release_addin.py`. Schema 1 is unchanged; an addin's

@@ -2,7 +2,7 @@
 """Build catalog.json from the registry (catalog/plugins/*.json) and the plugins' GitHub releases or tags.
 
   tools/catalog_build.py [--registry catalog/plugins] [--out catalog/dist] [--cache catalog/.cache]
-                         [--yanked catalog/yanked.json] [--keep 10] [--check-registry]
+                         [--yanked catalog/yanked.json] [--added catalog/added.json] [--keep 10] [--check-registry]
 
 For every registry entry with distribution "release" (the default): list the repo's releases, download the asset
 matching asset_pattern, validate it with tools/catalog_check.py (--catalog, id and repo must match the entry), and record
@@ -13,6 +13,10 @@ An entry with distribution "build-yourself" (a plugin that must never publish a 
 the user's own firmware) has no download: versions are the repo's vX.Y.Z git tags, and each tag must contain the
 declared build script. A GitHub release that carries a *-mpc-armv7.zip asset is reported loudly (it would break the
 licence position). No zip is fetched or validated.
+
+Collections (catalog/collections/<id>.json): several entries from one repo shown as one card on the site. A member entry sets
+"collection": "<id>"; it keeps its own release, versions, checks and tier. More than MAX_UNCOLLECTED entries from one repo by one
+author without a collection is a registry error. catalog.json gets a collections[] list (members, kind counts, best tier, total downloads).
 
 GITHUB_TOKEN (optional) raises the API rate limit. --check-registry only validates the registry files, and that no stray *.json sits beside them in catalog/ (for PRs).
 Standard library only. See docs/CATALOG.md and docs/CATALOG_SPEC.md.
@@ -43,10 +47,20 @@ ZIP_PATTERN = "*-mpc-armv7.zip"
 # SPDX ids accepted as open source; anything else needs a human decision (edit this list in the PR that adds it).
 MAX_SUMMARY = 350   # characters; longer detail belongs in the repo README (docs/CATALOG.md)
 MAX_TAGS = 8
-CATALOG_FILES = {"apps.json", "patches.json", "yanked.json"}   # the only JSON directly in catalog/; plugin entries live in plugins/
+MAX_UNCOLLECTED = 5   # entries one repo may list per author without a collection (docs/CATALOG.md, "Collections")
+COLLECTION_FIELDS = ("id", "title", "author", "repo", "summary")
+CATALOG_FILES = {"added.json", "apps.json", "patches.json", "yanked.json"}   # the only JSON directly in catalog/; plugin entries live in plugins/
 OPEN_LICENSES = {"MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Apache-2.0", "GPL-2.0-only", "GPL-2.0-or-later",
                  "GPL-3.0-only", "GPL-3.0-or-later", "LGPL-2.1-only", "LGPL-2.1-or-later", "LGPL-3.0-only",
                  "LGPL-3.0-or-later", "AGPL-3.0-only", "AGPL-3.0-or-later", "MPL-2.0", "Unlicense", "CC0-1.0", "Zlib"}
+
+
+def is_open_license(lic):
+    """An SPDX ID on OPEN_LICENSES, or several joined by AND/OR (a zip that bundles a program under another open licence,
+    e.g. "MIT AND Apache-2.0"): open when every ID in it is."""
+    ids = lic.replace("(", " ").replace(")", " ").split()
+    return bool(ids) and len(ids) % 2 == 1 and all(t in OPEN_LICENSES for t in ids[::2]) \
+        and all(t in ("AND", "OR") for t in ids[1::2])
 
 
 def check_entry(e, fname=None):
@@ -68,7 +82,7 @@ def check_entry(e, fname=None):
         p.append("repo must be owner/name")
     if e["kind"] not in ENTRY_KINDS:
         p.append("kind must be one of %s" % ", ".join(ENTRY_KINDS))
-    if e["license"] not in OPEN_LICENSES and e.get("source_available") is not True:
+    if not is_open_license(e["license"]) and e.get("source_available") is not True:
         p.append("license %r is not on the open-source list: set \"source_available\": true if the source is public "
                  "but the license limits use (shown as a badge), see docs/CATALOG.md" % e["license"])
     if "source_available" in e and not isinstance(e["source_available"], bool):
@@ -82,6 +96,8 @@ def check_entry(e, fname=None):
     if "flags_reviewed" in e and not (isinstance(e["flags_reviewed"], list) and e["flags_reviewed"]
                                       and all(c in catalog_check.RISKY_CALLS for c in e["flags_reviewed"])):
         p.append("flags_reviewed must list risky-call categories a maintainer has reviewed: %s" % ", ".join(catalog_check.RISKY_CALLS))
+    if "collection" in e and not (isinstance(e["collection"], str) and ID.fullmatch(e["collection"])):
+        p.append("collection must be the id of a file in catalog/collections/ (a lowercase slug)")
     if "featured" in e and not isinstance(e["featured"], bool):
         p.append("featured must be true or false")
     if "tags" in e and not (isinstance(e["tags"], list) and all(isinstance(t, str) and ID.fullmatch(t) for t in e["tags"])):
@@ -169,7 +185,7 @@ def _nonempty_str(v):
 def check_build_yourself(e):
     """Registry rules for a "build-yourself" entry (offline; the tag and script checks need GitHub, see build())."""
     p = []
-    if e["license"] not in OPEN_LICENSES:
+    if not is_open_license(e["license"]):
         p.append("build-yourself needs an open-source SPDX license (source_available is not enough): the source must be "
                  "open even though no built zip is published")
     if e.get("source_available"):
@@ -247,6 +263,129 @@ def load_registry(path):
                 comp_ids[c["id"]] = e["id"]
             entries.append(e)
     return entries, problems
+
+
+def check_collection(c, fname=None):
+    """Problems with one collection file (catalog/collections/<id>.json), on its own."""
+    if not isinstance(c, dict):
+        return ["must be an object with %s" % ", ".join(COLLECTION_FIELDS)]
+    p = ["missing " + k for k in COLLECTION_FIELDS if not _nonempty_str(c.get(k))]
+    if p:
+        return p
+    if not ID.fullmatch(c["id"]):
+        p.append("bad id %r" % c["id"])
+    if fname and os.path.splitext(os.path.basename(fname))[0] != c["id"]:
+        p.append("file name must be <id>.json")
+    if not REPO.fullmatch(c["repo"]):
+        p.append("repo must be owner/name")
+    if len(c["summary"]) > MAX_SUMMARY:
+        p.append("summary is %d characters, the limit is %d: keep the card short and put the detail in the repo README"
+                 % (len(c["summary"]), MAX_SUMMARY))
+    if "screenshot" in c and not (isinstance(c["screenshot"], str) and c["screenshot"].startswith("https://")):
+        p.append("screenshot must be an https:// link")
+    extra = sorted(set(c) - set(COLLECTION_FIELDS) - {"screenshot"})
+    if extra:
+        p.append("unknown field%s %s" % ("s" if len(extra) > 1 else "", ", ".join(extra)))
+    return p
+
+
+def load_collections(path, entries, registry=None):
+    """-> ({id: collection}, problems [(file, message)]). Reads catalog/collections/*.json and checks them against the registry
+    entries: each member's collection exists and has the member's repo, each collection has at least two members, and no repo
+    lists more than MAX_UNCOLLECTED entries by one author without a collection. Counting per author leaves alone a repo that hosts
+    a few ports credited to different authors (sd88me/mpc-vst-TR-MPC: four drum machines by athousanddetails beside its own kit
+    and FX), and still catches one author flooding the grid. A member whose collection is broken keeps its own listing
+    (build() drops the link); the problem fails --check-registry."""
+    cols, problems = {}, []
+    for f in sorted(glob.glob(os.path.join(path, "*.json"))):
+        try:
+            with open(f) as fh:
+                c = json.load(fh)
+        except ValueError as ex:
+            problems.append((f, "invalid JSON: %s" % ex))
+            continue
+        errs = check_collection(c, f)
+        if not errs and c["id"] in cols:
+            errs.append("duplicate collection id")
+        problems += [(f, x) for x in errs]
+        if not errs:
+            cols[c["id"]] = dict(c, _file=f)
+    efile = lambda e: os.path.join(registry, e["id"] + ".json") if registry else e["id"]
+    members = {}
+    for e in entries:
+        cid = e.get("collection")
+        if cid is None:
+            continue
+        c = cols.get(cid)
+        if not c:
+            problems.append((efile(e), "collection %r has no file catalog/collections/%s.json" % (cid, cid)))
+        elif c["repo"].lower() != e["repo"].lower():
+            problems.append((efile(e), "collection %r is for repo %s, this entry's repo is %s: a collection holds one repo's entries"
+                             % (cid, c["repo"], e["repo"])))
+        else:
+            members.setdefault(cid, []).append(e["id"])
+    for cid, c in sorted(cols.items()):
+        if len(members.get(cid, [])) < 2:
+            problems.append((c["_file"], "a collection needs at least 2 member entries (\"collection\": \"%s\" in catalog/plugins/*.json), it has %d"
+                             % (cid, len(members.get(cid, [])))))
+    loose = {}
+    for e in entries:
+        if not e.get("collection"):
+            loose.setdefault((e["repo"].lower(), e["author"].strip().lower()), []).append(e)
+    for (repo, _), es in sorted(loose.items()):
+        if len(es) > MAX_UNCOLLECTED:
+            problems.append((registry or "catalog/plugins", "%d entries from %s by %s have no collection (the limit is %d per author): add "
+                             "catalog/collections/<id>.json and set \"collection\" on them (%s), see catalog/README.md"
+                             % (len(es), repo, es[0]["author"].strip(), MAX_UNCOLLECTED, ", ".join(sorted(e["id"] for e in es)))))
+    ok = {cid: {k: v for k, v in c.items() if k != "_file"} for cid, c in cols.items() if len(members.get(cid, [])) >= 2}
+    return ok, problems
+
+
+TIER_RANK = {"verified": 0, "listed": 1, "experimental": 2}
+
+
+def collections_of(plugins, collections):
+    """The catalog's collections[] from the built plugins (members found by their "collection" field, which build() keeps
+    only for a valid collection): members (ids, by name), kinds (count per kind), the best member tier, verified_on (the
+    generations of the verified members), total downloads, updated (newest member update) and added (oldest member)."""
+    out = []
+    for cid, c in sorted(collections.items()):
+        mem = [p for p in plugins if p.get("collection") == cid]
+        if len(mem) < 2:
+            continue
+        kinds = {}
+        for p in mem:
+            kinds[p["kind"]] = kinds.get(p["kind"], 0) + 1
+        tier = min((p["tier"] for p in mem), key=lambda t: TIER_RANK.get(t, 1))
+        item = {k: c[k] for k in COLLECTION_FIELDS}
+        if c.get("screenshot"):
+            item["screenshot"] = c["screenshot"]
+        item.update({
+            "members": [p["id"] for p in mem],
+            "kinds": kinds,
+            "tier": tier,
+            "verified_on": sorted({g for p in mem if p["tier"] == "verified" for g in p.get("verified_on", [])}),
+            "downloads": sum(p.get("downloads", 0) for p in mem),
+            "updated": max((p.get("updated") or "" for p in mem), default=""),
+            "added": min((p.get("added") for p in mem if p.get("added")), default=""),
+        })
+        out.append(item)
+    return out
+
+
+def load_added(path):
+    """-> ({id: "YYYY-MM-DD"}, problems [(file, message)]) from catalog/added.json (the date each entry joined the catalog)."""
+    if not os.path.exists(path):
+        return {}, []
+    try:
+        data = json.load(open(path))
+    except ValueError as err:
+        return {}, [(path, "not valid JSON: %s" % err)]
+    if not isinstance(data, dict):
+        return {}, [(path, "must be an object of id: date")]
+    bad = [(path, "%r: %r is not a YYYY-MM-DD date" % (k, v)) for k, v in sorted(data.items())
+           if not (isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v))]
+    return ({k: v for k, v in data.items() if isinstance(v, str)}, bad)
 
 
 def stray_files(catalog_dir):
@@ -380,11 +519,13 @@ def tag_versions(e, src, yanked, tested, keep, problems):
     return versions
 
 
-def build(entries, src, cache, yanked, keep=10, now=None, require_portable=()):
+def build(entries, src, cache, yanked, keep=10, now=None, require_portable=(), added=None, collections=None):
     """-> (catalog dict, problems list [{id, tag, error, unreadable?, superseded?}]). "unreadable" marks a repo or
     release list that could not be read at all, as opposed to one that was read and found invalid.
     A plugin whose newest stable release is of the old layout (no "layout" field) gets a problem, so the catalog repo opens an
-    issue for it. require_portable (entry ids): such a release is invalid instead (the PR check for new listings)."""
+    issue for it. require_portable (entry ids): such a release is invalid instead (the PR check for new listings).
+    collections ({id: collection}, from load_collections): a member keeps its "collection" field only when the collection is
+    in it with the same repo, and the catalog gets collections[] (collections_of)."""
     os.makedirs(cache, exist_ok=True)
     plugins, problems = [], []
     for e in entries:
@@ -435,6 +576,10 @@ def build(entries, src, cache, yanked, keep=10, now=None, require_portable=()):
             except Exception as ex:
                 failed.append(({"id": e["id"], "tag": tag, "error": "download/validate failed: %s" % ex}, pub))
                 continue
+            pattern = e.get("asset_pattern", "*-mpc-armv7.zip")
+            gen2_only = "aarch64" in pattern and "armv7" not in pattern   # a plugin with only a Gen2 build (docs/GEN2.md)
+            if not errors and gen2_only and rec["manifest"].get("arch") != "aarch64":
+                errors = ["the entry's asset_pattern is for the Gen2 build, but %s is arch %s" % (asset["name"], rec["manifest"].get("arch"))]
             if not errors and (rec["manifest"]["kind"] == "addin") != (e["kind"] == "addin"):
                 errors = ["the release is a%s but the registry entry's kind is %s" % (
                     "n addin" if rec["manifest"]["kind"] == "addin" else " plugin", e["kind"])]
@@ -446,18 +591,23 @@ def build(entries, src, cache, yanked, keep=10, now=None, require_portable=()):
                 continue
             # Gen2: an optional sibling asset (armv7 -> aarch64 in the pattern) built from the same tag. It must pass the same checks
             # and agree with the armv7 zip on id, uid and version; a bad one is reported but never hides the Gen1 release.
-            rec["assets"] = {"armv7": {k: rec[k] for k in ("sha256", "size") if k in rec} | {"url": asset["browser_download_url"]}}
+            rec["assets"] = {("aarch64" if gen2_only else "armv7"): {k: rec[k] for k in ("sha256", "size") if k in rec} | {"url": asset["browser_download_url"]}}
+            if gen2_only:   # the one zip IS the Gen2 build: url/sha256/size stay it (schema-1 readers), gen2_only tells the clients not to offer it on Gen1
+                rec["gen2"] = True
+                rec["gen2_only"] = True
             pat64 = e.get("asset_pattern", "*-mpc-armv7.zip").replace("armv7", "aarch64")
             # a pattern with no "armv7" in it has no aarch64 sibling (it would match the armv7 zip again)
-            a64 = [x for x in rel.get("assets", []) if fnmatch.fnmatch(x["name"], pat64)] if pat64 != e.get("asset_pattern", "*-mpc-armv7.zip") else []
+            a64 = [x for x in rel.get("assets", []) if fnmatch.fnmatch(x["name"], pat64)] if pat64 != e.get("asset_pattern", "*-mpc-armv7.zip") and not gen2_only else []
             if len(a64) == 1:
                 z64 = os.path.join(cache, "%s-%s.zip" % (e["id"], a64[0]["id"]))
                 try:
                     if not os.path.exists(z64):
                         src.download(a64[0], z64)
                     err64, warn64, rec64 = catalog_check.check(z64, catalog=True, expect_id=e["id"], expect_repo=e["repo"])
+                    # an addin's manifest has no "uid" (that's a VST plugin's concept, for save-file compatibility
+                    # across generations); expect_id above already ties both zips to the same catalog entry
                     if not err64 and (rec64["manifest"]["arch"] != "aarch64" or rec64["version"] != rec["version"]
-                                      or rec64["manifest"]["uid"] != rec["manifest"]["uid"]):
+                                      or rec64["manifest"].get("uid") != rec["manifest"].get("uid")):
                         err64 = ["aarch64 zip is not arch aarch64 with the same version and uid as the armv7 zip"]
                 except Exception as ex:
                     err64 = ["download/validate failed: %s" % ex]
@@ -498,6 +648,9 @@ def build(entries, src, cache, yanked, keep=10, now=None, require_portable=()):
         for k in ("screenshot", "homepage", "style", "role"):
             if e.get(k):
                 item[k] = e[k]
+        col = (collections or {}).get(e.get("collection"))
+        if col and col["repo"].lower() == e["repo"].lower():
+            item["collection"] = e["collection"]
         item["tags"] = e.get("tags", [])
         item["source_available"] = bool(e.get("source_available"))
         item["distribution"] = e.get("distribution", "release")
@@ -520,10 +673,18 @@ def build(entries, src, cache, yanked, keep=10, now=None, require_portable=()):
         item["latest_beta"] = next((v["version"] for v in versions if v["channel"] == "beta" and not v["yanked"]), None)
         item["downloads"] = all_time
         item["updated"] = max((v["date"] for v in versions if not v["yanked"]), default="")
+        # when the entry joined the catalog (the site's "Newest in catalog" sort): catalog/added.json, else the oldest release
+        item["added"] = (added or {}).get(e["id"]) or min((v["date"] for v in versions if not v["yanked"] and v.get("date")), default="")
         plugins.append(item)
     plugins.sort(key=lambda p: p["name"].lower())
     catalog = {"schema": 1, "generated": (now or datetime.datetime.now(datetime.timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ"),
                "bar": BAR, "plugins": plugins}
+    if collections:
+        catalog["collections"] = collections_of(plugins, collections)
+        listed = {m for c in catalog["collections"] for m in c["members"]}
+        for p in plugins:   # a collection left with fewer than 2 built members is not listed: its members stand alone
+            if p.get("collection") and p["id"] not in listed:
+                del p["collection"]
     return catalog, problems
 
 
@@ -554,29 +715,36 @@ def main():
     ap.add_argument("--out", default="catalog/dist")
     ap.add_argument("--cache", default="catalog/.cache")
     ap.add_argument("--yanked", default="catalog/yanked.json")
+    ap.add_argument("--added", default="catalog/added.json")
+    ap.add_argument("--collections", default=None, help="collection files (default: collections/ next to --registry)")
     ap.add_argument("--keep", type=int, default=10)
     ap.add_argument("--check-registry", action="store_true")
     ap.add_argument("--require-portable", metavar="ID", nargs="+",
                     help="validate only these entries' releases and fail when a newest release is of the old layout (PR check for new listings)")
     a = ap.parse_args()
     entries, reg_problems = load_registry(a.registry)
+    added, added_problems = load_added(a.added)
+    coll_dir = a.collections or os.path.join(os.path.dirname(os.path.normpath(a.registry)), "collections")
+    collections, coll_problems = load_collections(coll_dir, entries, a.registry)
+    reg_problems += coll_problems
     if a.check_registry:
-        reg_problems += stray_files(os.path.dirname(os.path.normpath(a.registry)))
+        reg_problems += stray_files(os.path.dirname(os.path.normpath(a.registry))) + added_problems
+        reg_problems += [(a.added, "%r is not a registry entry" % k) for k in sorted(added) if k not in {e["id"] for e in entries}]
     for f, m in reg_problems:
         print("error: %s: %s" % (f, m), file=sys.stderr)
     if a.check_registry:
-        print("%d entries, %d problems" % (len(entries), len(reg_problems)))
+        print("%d entries, %d collections, %d problems" % (len(entries), len(collections), len(reg_problems)))
         sys.exit(1 if reg_problems else 0)
     yanked = set(json.load(open(a.yanked))) if os.path.exists(a.yanked) else set()
     if a.require_portable:
         sel = [e for e in entries if e["id"] in a.require_portable]
-        catalog, problems = build(sel, GitHub(os.environ.get("GITHUB_TOKEN")), a.cache, yanked, a.keep, require_portable=set(a.require_portable))
+        catalog, problems = build(sel, GitHub(os.environ.get("GITHUB_TOKEN")), a.cache, yanked, a.keep, require_portable=set(a.require_portable), added=added, collections=collections)
         bad = [p for p in problems if not p.get("superseded")]
         for p in bad:
             print("error: %(id)s %(tag)s: %(error)s" % p, file=sys.stderr)
         print("%d entries checked for the portable layout, %d problems" % (len(sel), len(bad)))
         sys.exit(1 if bad or reg_problems else 0)
-    catalog, problems = build(entries, GitHub(os.environ.get("GITHUB_TOKEN")), a.cache, yanked, a.keep)
+    catalog, problems = build(entries, GitHub(os.environ.get("GITHUB_TOKEN")), a.cache, yanked, a.keep, added=added, collections=collections)
     os.makedirs(a.out, exist_ok=True)
     json.dump(catalog, open(os.path.join(a.out, "catalog.json"), "w"), indent=1)
     json.dump(problems, open(os.path.join(a.out, "problems.json"), "w"), indent=1)
@@ -593,7 +761,8 @@ def main():
         for k in pl["bar_missing"]:
             miss[k] = miss.get(k, 0) + 1
     print("quality bar, plugins still missing: " + (", ".join("%s %d" % kv for kv in sorted(miss.items())) or "none"))
-    print("%d plugins, %d versions, %d problems" % (len(catalog["plugins"]), sum(len(p["versions"]) for p in catalog["plugins"]), len(problems)))
+    print("%d plugins, %d collections, %d versions, %d problems" % (len(catalog["plugins"]), len(catalog.get("collections", [])),
+          sum(len(p["versions"]) for p in catalog["plugins"]), len(problems)))
     sys.exit(1 if reg_problems else 0)
 
 
