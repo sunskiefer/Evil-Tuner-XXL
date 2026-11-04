@@ -46,8 +46,19 @@ printf '#!/bin/sh\nexec llvm-objcopy "$@"\n' > "$TC/$T-objcopy"
 chmod +x "$TC"/*
 export PATH="$TC:$PATH"
 
-clone() {   # clone <github path> <tag> <dir>
-  [ -d "$D/$3" ] || git -c advice.detachedHead=false clone -q --depth 1 --branch "$2" "https://github.com/$1" "$D/$3"
+clone() {   # clone <github path> <tag> <dir> -- a real clone has .git; anything else
+            # (an empty dir, a distfile skeleton) is not a checkout and gets cloned over.
+            # NB: [ -d ] / non-empty guards are wrong here -- the roc distfile step
+            # pre-creates roc/3rdparty/_distfiles BEFORE this runs.
+  local i
+  for i in 1 2 3; do
+    [ -e "$D/$3/.git" ] && return 0
+    rm -rf "$D/$3"
+    git -c advice.detachedHead=false clone -q --depth 1 --branch "$2" "https://github.com/$1" "$D/$3" || true
+    sleep 1
+  done
+  [ -e "$D/$3/.git" ] && return 0
+  echo "clone of $1@$2 failed after 3 attempts" >&2; return 1
 }
 
 # ---------------------------------------------------------------- et_exec (PDEATHSIG launcher)
