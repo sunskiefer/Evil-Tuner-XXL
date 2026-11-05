@@ -61,8 +61,9 @@ window and push buttons. The effect pages are the modern modules.*
 
 ## Requirements
 
-- An **Akai Force** or a first-generation standalone MPC (MPC Live / Live II, One, X, Key 61) on **MPC OS 3.x**
-  (32-bit ARM). The skin needs 3.x; it does not draw on 2.x.
+- An **Akai Force** or a standalone MPC on **MPC OS 3.x**. Two builds: **Gen1** (Force, MPC Live / Live II / One / X /
+  Key 61, 32-bit ARM) and **Gen2** (MPC Live II Gen2 / Live III / One+ / Force Gen2, RK3588 aarch64 -- `build-gen2.sh`).
+  The skin needs 3.x; it does not draw on 2.x.
 - **Root shell (SSH)** to install, as with every catalog plugin: a modded unit (for example MockbaMod).
 - A **network**: Wi-Fi, or a phone's hotspot. RADIO needs internet; PHONE and AIRPLAY only need the phone and the MPC on
   the same network.
@@ -462,6 +463,9 @@ helpers/build_helpers.sh   # once: ffmpeg, et_roc, shairport-sync (static, armv7
 test/run_tests.sh          # offline tests on x86 under ASan / UBSan (a local stream through the real radio path)
 python3 tools/preview.py out/   # the pages as pictures
 ```
+
+**Gen2 (aarch64)**: `helpers/build_helpers_gen2.sh all` builds the helpers (static musl) and `./build-gen2.sh` the plugin
+(glibc 2.31 ceiling, loads on Gen2's 2.39) and its skin -> `build/package-gen2/`. The same tools, tests and preview.
 
 `tools/gen_params.py` is the parameter list, `tools/panel.py` where everything sits, `tools/panel_art.py` draws the pages.
 `qlinks.json` is the Q-Link map (each page's knobs, in Q-Link order, "qlink-map 1" format): change it and rebuild to put
