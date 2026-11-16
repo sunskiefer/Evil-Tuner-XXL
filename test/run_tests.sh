@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.."
 W=third_party/mpc-vst-plugins/wrapper
 T=third_party/mpc-vst-plugins/tools
 python3 tools/gen_params.py >/dev/null
-python3 "$T/gen_vst.py" vst.json >/dev/null 2>&1 || true   # build/params.h
+python3 "$T/gen_vst.py" vst.json --params-h >/dev/null   # build/params.h only (leaves build/skin alone)
 test -f build/params.h
 SAN="-fsanitize=address,undefined -fno-omit-frame-pointer"
 mkdir -p build/hosttest

@@ -10,7 +10,7 @@ ZIG="${ZIG:-python3 -m ziglang}"
 W=third_party/mpc-vst-plugins/wrapper
 T=third_party/mpc-vst-plugins/tools
 python3 tools/gen_params.py >/dev/null
-python3 "$T/gen_vst.py" vst.json >/dev/null 2>&1 || true   # build/params.h
+python3 "$T/gen_vst.py" vst.json --params-h >/dev/null   # build/params.h only (leaves build/skin alone)
 test -f build/params.h
 # sim <dir> <target flags> <qemu>: the host test as that CPU's code, run under qemu
 sim() {
