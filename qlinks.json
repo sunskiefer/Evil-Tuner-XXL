@@ -147,71 +147,29 @@
      "n": 15,
      "qlinkPage": 2,
      "knob": 7,
-     "key": "mix",
-     "name": "GRAIN MIX"
+     "key": "flt_env",
+     "name": "FILTER ENV"
     },
     {
      "n": 16,
      "qlinkPage": 2,
      "knob": 8,
-     "key": "volume",
-     "name": "VOLUME"
+     "key": "osc_lvl",
+     "name": "OSC LEVEL"
     },
     {
      "n": 17,
      "qlinkPage": 3,
      "knob": 1,
-     "key": "flt_env",
-     "name": "FILTER ENV"
+     "key": "mix",
+     "name": "GRAIN MIX"
     },
     {
      "n": 18,
      "qlinkPage": 3,
      "knob": 2,
-     "key": "osc_lvl",
-     "name": "OSC LEVEL"
-    },
-    {
-     "n": 19,
-     "qlinkPage": 3,
-     "knob": 3,
-     "key": null,
-     "name": null
-    },
-    {
-     "n": 20,
-     "qlinkPage": 3,
-     "knob": 4,
-     "key": null,
-     "name": null
-    },
-    {
-     "n": 21,
-     "qlinkPage": 3,
-     "knob": 5,
-     "key": null,
-     "name": null
-    },
-    {
-     "n": 22,
-     "qlinkPage": 3,
-     "knob": 6,
-     "key": null,
-     "name": null
-    },
-    {
-     "n": 23,
-     "qlinkPage": 3,
-     "knob": 7,
-     "key": null,
-     "name": null
-    },
-    {
-     "n": 24,
-     "qlinkPage": 3,
-     "knob": 8,
-     "key": null,
-     "name": null
+     "key": "volume",
+     "name": "VOLUME"
     }
    ]
   },
@@ -395,6 +353,20 @@
      "knob": 8,
      "key": "duck_depth",
      "name": "DUCK DEPTH"
+    },
+    {
+     "n": 9,
+     "qlinkPage": 2,
+     "knob": 1,
+     "key": "duck_rel",
+     "name": "DUCK RELEASE"
+    },
+    {
+     "n": 10,
+     "qlinkPage": 2,
+     "knob": 2,
+     "key": "duck_ch",
+     "name": "DUCK MIDI CH"
     }
    ]
   },
@@ -571,64 +543,29 @@
      "n": 16,
      "qlinkPage": 2,
      "knob": 8,
-     "key": null,
-     "name": null
+     "key": "atk",
+     "name": "ATTACK"
     },
     {
      "n": 17,
      "qlinkPage": 3,
      "knob": 1,
-     "key": "atk",
-     "name": "ATTACK"
+     "key": "dec",
+     "name": "DECAY"
     },
     {
      "n": 18,
      "qlinkPage": 3,
      "knob": 2,
-     "key": "dec",
-     "name": "DECAY"
+     "key": "sus",
+     "name": "SUSTAIN"
     },
     {
      "n": 19,
      "qlinkPage": 3,
      "knob": 3,
-     "key": "sus",
-     "name": "SUSTAIN"
-    },
-    {
-     "n": 20,
-     "qlinkPage": 3,
-     "knob": 4,
      "key": "rel",
      "name": "RELEASE"
-    },
-    {
-     "n": 21,
-     "qlinkPage": 3,
-     "knob": 5,
-     "key": null,
-     "name": null
-    },
-    {
-     "n": 22,
-     "qlinkPage": 3,
-     "knob": 6,
-     "key": null,
-     "name": null
-    },
-    {
-     "n": 23,
-     "qlinkPage": 3,
-     "knob": 7,
-     "key": null,
-     "name": null
-    },
-    {
-     "n": 24,
-     "qlinkPage": 3,
-     "knob": 8,
-     "key": null,
-     "name": null
     }
    ]
   }

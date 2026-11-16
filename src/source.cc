@@ -344,7 +344,14 @@ static std::string runnable_helpers(const std::string& dir, const std::string& d
 
 // ------------------------------------------------------------------------------------------------ Sources
 void Sources::start(const std::string& plugin_dir, const std::string& data_dir) {
-  helper_dir = plugin_dir + "/bin";
+  // 0.3.0: the helpers for this CPU are in bin/arm64 (Gen2, 64-bit) or bin/arm32 (Gen1 and the Force); a 0.2.0-style
+  // install has them in bin/ itself
+#if defined(__aarch64__)
+  helper_dir = plugin_dir + "/bin/arm64";
+#else
+  helper_dir = plugin_dir + "/bin/arm32";
+#endif
+  if (access((helper_dir + "/et_exec").c_str(), F_OK) != 0) helper_dir = plugin_dir + "/bin";
   data_dir_ = data_dir;
   ring.init(1u << 19);   // 11.9 s
   quit_ = false;

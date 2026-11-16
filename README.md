@@ -2,8 +2,9 @@
 
 **Internet radio, your phone and AirPlay, played straight into an Akai Force / MPC track, and bent out of shape on the way.**
 
-Evil Tuner XXL is a native MPC OS VST2 instrument for the Akai Force and the standalone MPCs (Gen1, MPC OS 3.x). It
-brings three sources into an MPC track:
+Evil Tuner XXL is a native MPC OS VST2 instrument for the Akai Force and the standalone MPCs: the first-generation ones
+(32-bit, MPC OS 3.x) and, since 0.3.0, the 64-bit ones (MPC Live III, XL, One G2, Key G2) and Akai's own plugin folder
+format on MPC OS 3.10.1. It brings three sources into an MPC track:
 
 - **RADIO**: 30,000+ internet stations from [Radio Browser](https://www.radio-browser.info), browsed by genre, country,
   popularity and bitrate, or searched by name;
@@ -61,35 +62,54 @@ window and push buttons. The effect pages are the modern modules.*
 
 ## Requirements
 
-- An **Akai Force** or a first-generation standalone MPC (MPC Live / Live II, One, X, Key 61) on **MPC OS 3.x**
-  (32-bit ARM). The skin needs 3.x; it does not draw on 2.x.
-- **Root shell (SSH)** to install, as with every catalog plugin: a modded unit (for example MockbaMod).
+- An **Akai Force** or a first-generation standalone MPC (MPC Live / Live II, One, X, Key 61 / 37) on **MPC OS 3.x**
+  (32-bit ARM: the `-mpc-armv7.zip`), or a 64-bit MPC (**MPC Live III, XL, One G2, Key G2**: the `-mpc-aarch64.zip`).
+  The skin needs 3.x; it does not draw on 2.x.
+- **Root shell (SSH)** to install those zips, as with every catalog plugin: a modded unit (for example MockbaMod). On
+  **MPC OS 3.10.1 or later** there is a third way with no mod at all: the `-mpc-sdk.zip`, Akai's plugin folder format
+  (see Install).
 - A **network**: Wi-Fi, or a phone's hotspot. RADIO needs internet; PHONE and AIRPLAY only need the phone and the MPC on
   the same network.
-- Nothing else. The decoders and receivers ship inside the plugin's folder (`bin/`), built fully static so they don't
-  depend on the device's libraries. HTTPS uses MPC OS's own libcurl.
+- Nothing else. The decoders and receivers ship inside the plugin's folder (`bin/arm32/` and `bin/arm64/`, the plugin
+  picks the ones for its CPU), built fully static so they don't depend on the device's libraries. HTTPS uses MPC OS's own
+  libcurl.
 
 ## Install
 
-**With the Plugin Manager** (once Evil Tuner XXL is in the [mpc-vst-plugins catalog](https://sd88me.github.io/mpc-vst-plugins/)):
-DISCOVER → Evil Tuner XXL → INSTALL → APPLY.
+Each release has three zips. Pick the one for your device:
 
-**One line, on the device** (needs internet; save your project first, MPC restarts):
+| Zip | For |
+|---|---|
+| `Evil-Tuner-XXL-<version>-mpc-armv7.zip` | Akai Force and the 32-bit MPCs (X, Live, Live II, One, Key 61 / 37), modded, MPC OS 3.x |
+| `Evil-Tuner-XXL-<version>-mpc-aarch64.zip` | the 64-bit MPCs (Live III, XL, One G2, Key G2), modded, MPC OS 3.x |
+| `Evil-Tuner-XXL-<version>-mpc-sdk.zip` | any MPC on **MPC OS 3.10.1 or later**, Akai's plugin folder format, no mod needed |
+
+**With the Plugin Manager** (the [Open MPC catalog](https://open-mpc.github.io/mpc-vst-plugins/)): DISCOVER → Evil Tuner
+XXL → INSTALL → APPLY. It picks the right zip for the device.
+
+**One line, on the device** (needs internet; save your project first, MPC restarts). Force and 32-bit MPCs:
 
 ```sh
-cd /tmp && wget -qO et.zip https://github.com/sunskiefer/Evil-Tuner-XXL/releases/download/v0.2.0/Evil-Tuner-XXL-0.2.0-mpc-armv7.zip && unzip -qo et.zip && sh Evil-Tuner-XXL-0.2.0/install.sh
+cd /tmp && wget -qO et.zip https://github.com/sunskiefer/Evil-Tuner-XXL/releases/download/v0.3.0/Evil-Tuner-XXL-0.3.0-mpc-armv7.zip && unzip -qo et.zip && sh Evil-Tuner-XXL-0.3.0/install.sh
 ```
 
-**From a computer:** download the release zip, then
+64-bit MPCs: the same line with `-mpc-aarch64.zip` in place of `-mpc-armv7.zip`.
+
+**From a computer:** download the release zip for your device, then
 
 ```sh
-scp -r Evil-Tuner-XXL-0.2.0 root@<device-ip>:/tmp/
-ssh root@<device-ip> sh /tmp/Evil-Tuner-XXL-0.2.0/install.sh
+scp -r Evil-Tuner-XXL-0.3.0 root@<device-ip>:/tmp/
+ssh root@<device-ip> sh /tmp/Evil-Tuner-XXL-0.3.0/install.sh
 ```
 
 The installer checks the device, copies the plugin folder to `/sdcard/Synths/`, backs up `MPC.settings`, registers the
 plugin and restarts MPC. Running it again upgrades and keeps your favourites. `uninstall.sh` removes it. The generated
 `INSTALL.md` inside the zip has the manual steps.
+
+**MPC OS 3.10.1 or later, Akai's format (no mod, no shell):** unzip `Evil-Tuner-XXL-<version>-mpc-sdk.zip` on a
+computer, copy its one folder (`L'Cronx - VST - Evil Tuner XXL`, with `plugin.json` and both binaries inside) into the
+`VST2 Plugins` folder of a USB drive or SD card, put the drive in the MPC, turn on **External Plugin Support** in the
+preferences and let MPC scan. The same folder works on the 32-bit and the 64-bit MPCs.
 
 Then add **Evil Tuner XXL** to a track from the plugin browser (**Instrument** plugins). Seven pages appear: **RADIO, PET,
 FX, SPACE, GATE, TAPE, MOD**. The Q-Links follow the page.
@@ -382,7 +402,7 @@ The plugin's track takes MIDI from the pads, a keyboard or a sequence.
 Set the pads to play notes 36–43 (the usual first eight pads of bank A).
 
 Notes on **DUCK MIDI CH** (with DUCK ON) only trigger the duck. A program change or CC does nothing; everything else is on
-the Q-Links (each page has its own: RADIO, PET 1–2, FX, SPACE, GATE, TAPE, MOD 1–3).
+the Q-Links (each page has its own: RADIO, PET 1–3, FX, SPACE, GATE 1–2, TAPE, MOD 1–3).
 
 ## Recording into the MPC
 
@@ -457,9 +477,10 @@ Needs Linux, python3 (Pillow, numpy, scipy), gcc, and Zig (`pip install ziglang`
 autotools, cmake, scons, ragel, pkg-config and llvm (`llvm-strip`, `llvm-objcopy`).
 
 ```sh
-helpers/build_helpers.sh   # once: ffmpeg, et_roc, shairport-sync (static, armv7), from fixed tags on GitHub
-./build.sh                 # the plugin (armv7, glibc 2.31) and its skin -> build/package/
+helpers/build_helpers.sh   # once: ffmpeg, et_roc, shairport-sync (static, armv7 and aarch64), from fixed tags on GitHub
+./build.sh                 # the plugin (armv7 and aarch64, glibc 2.31) and its skin -> build/package/, build/arm64/
 test/run_tests.sh          # offline tests on x86 under ASan / UBSan (a local stream through the real radio path)
+test/arm_sim.sh            # the wrapper + engine as 32-bit and 64-bit ARM code under qemu
 python3 tools/preview.py out/   # the pages as pictures
 ```
 
@@ -469,9 +490,14 @@ other controls on the Q-Links (`python3 tools/panel.py --qlinks` lists them).
 Final artwork drops in as `art/bg/<PAGE>.png` (1280 x 628): the generated background is then replaced and the controls are
 drawn over it.
 
-Status of 0.2.0: tested on an Akai Force (MPC OS 3.9.1 with MockbaMod), and offline (the engine and wrapper on x86 under
-ASan / UBSan, the ARM build under QEMU, the radio path end to end with a local stream, the ARM Roc receiver with a Roc
-sender, the AirPlay receiver's Apple-Response checked the way an Apple device checks it).
+The release zips are made by `third_party/open-mpc-release` (the Open MPC catalog's release tools, with the `'` of
+L'Cronx shell-escaped in `install.sh` / `uninstall.sh`): `-mpc-armv7.zip`, `-mpc-aarch64.zip` and, from those two,
+`-mpc-sdk.zip`.
+
+Status of 0.3.0: **not tried on a device yet** (offline only, 2026-11-16: the engine and wrapper on x86 under ASan /
+UBSan, the 32-bit and the 64-bit ARM builds under qemu, the radio path end to end with a local stream). 0.2.0, the same
+plugin with the 32-bit build only, was tested on an Akai Force (MPC OS 3.9.1 with MockbaMod); `tested.json` lists what
+has been tried on which device.
 
 ## Credits and licences
 

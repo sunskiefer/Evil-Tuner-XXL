@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.3.0
+
+Evil Tuner XXL for the 64-bit MPCs and for Akai's plugin folder format (MPC OS 3.10.1). Same sound, pages and presets as
+0.2.0. **Not tried on a device yet**: checked offline only (2026-11-16), see the README's Status.
+
+- **A 64-bit build** for the 64-bit MPCs (MPC Live III, XL, One G2, Key G2 and later). The 32-bit build (MPC X, Live,
+  Live II, One, Key 61 / 37, Force) is the same code.
+- **Three zips per release**, made with the Open MPC catalog's release tools (`third_party/open-mpc-release`):
+  `Evil-Tuner-XXL-0.3.0-mpc-armv7.zip` (Force and the 32-bit MPCs, with `install.sh`, as before),
+  `Evil-Tuner-XXL-0.3.0-mpc-aarch64.zip` (the 64-bit MPCs, with `install.sh`) and `Evil-Tuner-XXL-0.3.0-mpc-sdk.zip`
+  (one folder with `plugin.json` and both binaries for every MPC on MPC OS 3.10.1 or later: copy it into `VST2 Plugins`,
+  no mod needed).
+- The helper programs (ffmpeg, the Roc receiver, the AirPlay receiver) are built for both CPUs and ship in every zip
+  (`bin/arm32/`, `bin/arm64/`); the plugin picks the ones for the CPU it runs on. A 0.2.0-style `bin/` still works.
+- **Q-Link pages** as the MPC-OS-MACROXXL map: PET 2 ends with FLT ENV, OSC LVL and PET 3 is MIX, VOLUME; GATE 2 is new
+  (DUCK REL, DUCK CH); MOD 2 ends with ATK and MOD 3 is DEC, SUS, REL. Twelve Q-Link pages in all (RADIO, PET 1-3, FX,
+  SPACE, GATE 1-2, TAPE, MOD 1-3). The on-screen pages and touch controls are unchanged.
+- Build: `test/arm_sim.sh` runs the wrapper + engine host test as 32-bit and 64-bit ARM code under qemu; CI checks both
+  installers with `sh -n` (the `'` of L'Cronx) and both zips with the catalog checker.
+- The 0.2.0 release stays available as it is.
+
 ## 0.2.0
 
 Tested on an Akai Force (MPC OS 3.9.1).

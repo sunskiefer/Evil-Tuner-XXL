@@ -18,7 +18,7 @@
 #include <vector>
 
 #define ET_SR 44100
-#define ET_VERSION "0.1.0"
+#define ET_VERSION "0.3.0"
 
 namespace et {
 
